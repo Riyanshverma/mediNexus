@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { LandingPage } from '@/features/landing'
 import { LoginPage, SignupPage } from '@/features/authentication';
 import { PatientDashboard, AdminDashboard, DoctorDashboard } from '@/features/dashboard';
+import { DoctorOnBoardPage } from '@/features/doctor-onboard';
 
 const App = () => (
   <Router>
@@ -23,6 +24,7 @@ const App = () => (
         {/* Doctor Routes */}
         <Route path="/doctor/*" element={
           <Routes>
+            <Route path="on-board" element={<DoctorOnBoardPage />} />
             <Route path="dashboard" element={<DoctorDashboard />} />
             {/* Add more doctor-specific routes here */}
           </Routes>

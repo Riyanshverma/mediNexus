@@ -30,7 +30,7 @@ const LoginForm: FunctionComponent<LoginFormProps> = ({ role }) => {
   const onSubmit = async (data: userLogInType) => {
     try {
       
-      toast.success("Successfully logged in");
+      toast.success(`${role.charAt(0).toUpperCase() + role.slice(1)} successfully logged in`);
       navigate(`/${role}/dashboard`);
     } catch (error: any) {
       // toast.error(error.message);
