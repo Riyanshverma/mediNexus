@@ -8,10 +8,12 @@ import { Eye, EyeOff } from 'lucide-react';
 import { userLogInSchema, type userLogInType } from '@/validations/auth.validation';
 import { toast } from 'sonner';
 import { type LoginFormProps } from '@/types';
+import { useNavigate } from 'react-router-dom';
 
 
 const LoginForm: FunctionComponent<LoginFormProps> = ({ role }) => {
   const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -27,12 +29,9 @@ const LoginForm: FunctionComponent<LoginFormProps> = ({ role }) => {
 
   const onSubmit = async (data: userLogInType) => {
     try {
-      console.log(`Logging in ${role}`, data);
-      
-      // Submit Logic 
-      // await authService.logIn({ ...data, role });
       
       toast.success("Successfully logged in");
+      navigate(`/${role}/dashboard`);
     } catch (error: any) {
       // toast.error(error.message);
     }
