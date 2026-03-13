@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { IconHeartbeat } from "@tabler/icons-react";
+import { useNavigate } from "react-router-dom";
 
 const navItems = [
   { label: "Hero", href: "#hero" },
@@ -11,6 +12,8 @@ const navItems = [
 ];
 
 const Header = () => {
+  const navigate = useNavigate();
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto max-w-6xl px-4 h-16 flex items-center justify-between">
@@ -30,7 +33,14 @@ const Header = () => {
           ))}
         </nav>
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="lg" className="font-normal hidden sm:inline-flex text-md">Log in</Button>
+          <Button
+            variant="ghost"
+            size="lg"
+            className="font-normal hidden sm:inline-flex text-md"
+            onClick={() => navigate("/login")}
+          >
+            Log in
+          </Button>
           <Button size="lg" className="font-normal text-md">Get Started</Button>
         </div>
       </div>

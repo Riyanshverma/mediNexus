@@ -7,6 +7,10 @@ import ProblemSection from "./components/ProblemSection";
 import SolutionSection from "./components/SolutionSection";
 import HowItWorksSection from "./components/HowItWokrsSerction";
 
+export { Header, HeroSection, FeaturesSection, CTASection, Footer, ProblemSection, SolutionSection, HowItWorksSection }
+
+
+
 import LandingPage from "./pages/LandingPage";
 
-export { Header, HeroSection, FeaturesSection, CTASection, Footer, LandingPage, ProblemSection, SolutionSection, HowItWorksSection }
+export { LandingPage}
