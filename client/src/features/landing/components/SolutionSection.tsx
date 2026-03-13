@@ -41,7 +41,7 @@ const SolutionSection = () => {
               </div>
             </div>
             <div className="space-y-4">
-              <div className="p-6 bg-background rounded-2xl shadow-sm border h-[216px] flex flex-col justify-end">
+              <div className="p-6 bg-background rounded-2xl shadow-sm border h-54 flex flex-col justify-end">
                 <IconLayoutDashboard className="w-8 h-8 text-primary mb-3" />
                 <h4 className="font-medium">Smart Dashboard</h4>
               </div>

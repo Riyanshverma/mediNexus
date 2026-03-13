@@ -10,7 +10,6 @@ import HowItWorksSection from "./components/HowItWokrsSerction";
 export { Header, HeroSection, FeaturesSection, CTASection, Footer, ProblemSection, SolutionSection, HowItWorksSection }
 
 
-
 import LandingPage from "./pages/LandingPage";
 
 export { LandingPage}

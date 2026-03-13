@@ -2,16 +2,17 @@ import { useState } from "react";
 import { IconHeartbeat, IconArrowLeft } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import LoginForm from "../components/LoginForm";
 import { useNavigate } from "react-router-dom";
-import { type LoginRole as Role } from "@/types";
+import { SignupForm } from "..";
+import { type SignupRole } from "@/types";
 
-const LoginPage = () => {
-  const navigate = useNavigate(); 
-  const [role, setRole] = useState<Role>('patient'); 
+const SignupPage = () => {
+  const navigate = useNavigate();
+  const [role, setRole] = useState<SignupRole>('patient'); 
 
   return (
     <div className="container relative min-h-screen flex-col items-center justify-center grid lg:max-w-none lg:grid-cols-2 lg:px-0">
+      
       {/* Left Portion */}
       <div className="relative hidden h-full flex-col bg-muted p-8 text-white lg:flex dark:border-r">
         <div className="absolute inset-0 bg-primary/90" />
@@ -30,9 +31,9 @@ const LoginPage = () => {
         <div className="relative z-20 mt-auto">
           <blockquote className="space-y-2">
             <p className="text-lg">
-              "This platform has completely transformed how I manage my appointments and patient records."
+              "Joining mediNexus gave our clinic the digital infrastructure we critically needed to grow seamlessly."
             </p>
-            <footer className="text-sm">Sofia Davis</footer>
+            <footer className="text-sm">Dr. Emily Chen</footer>
           </blockquote>
         </div>
       </div>
@@ -45,40 +46,33 @@ const LoginPage = () => {
           </Button>
         </div>
         <div className="flex justify-end items-center gap-4 w-full">
-          <Button variant="ghost" className="font-light text-md" size="lg">Need help?</Button>
-          <Button 
-            className="font-light text-md" 
-            size="lg" 
-            disabled={role === "doctor"}
-            onClick={() => navigate("/register")}
-          >
-            Register
+          <span className="text-muted-foreground text-md hidden sm:inline-block">Already have an account?</span>
+          <Button variant="outline" className="font-light text-md" onClick={() => navigate("/login")}>
+            Log in
           </Button>
         </div>
         
-        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-100 mt-24">
+        <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-125 mt-24">
           <div className="flex flex-col space-y-2 text-center">
             <h1 className="text-4xl font-light tracking-tight">
-              Welcome back
+              Create an account
             </h1>
             <p className="text-lg text-muted-foreground pb-4 capitalize">
-              Login to your <span className="text-primary">{role}</span> account
+              Register as a <span className="text-primary">{role}</span>
             </p>
           </div>
 
-          {/* Role Section Tabs */}
-          <Tabs value={role} onValueChange={(v) => setRole(v as Role)} className="w-full">
-             <TabsList className="grid w-full grid-cols-3 ">
+          <Tabs value={role} onValueChange={(v) => setRole(v as SignupRole)} className="w-full">
+             <TabsList className="grid w-full grid-cols-2">
                <TabsTrigger value="patient" className="text-md font-light">Patient</TabsTrigger>
-               <TabsTrigger value="doctor" className="text-md font-light">Doctor</TabsTrigger>
-               <TabsTrigger value="admin" className="text-md font-light">Admin</TabsTrigger>
+               <TabsTrigger value="hospital" className="text-md font-light">Hospital / Clinic</TabsTrigger>
              </TabsList>
           </Tabs>
 
-          <LoginForm role={role} />
+          <SignupForm role={role} />
           
-          <p className="px-8 text-center text-md text-muted-foreground">
-            By clicking continue, you agree to our{" "}
+          <p className="px-8 text-center text-sm text-muted-foreground mt-4">
+            By clicking register, you agree to our{" "}
             <a href="#" className="underline underline-offset-4 hover:text-primary">Terms of Service</a>{" "}
             and{" "}
             <a href="#" className="underline underline-offset-4 hover:text-primary">Privacy Policy</a>.
@@ -89,4 +83,4 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default SignupPage;

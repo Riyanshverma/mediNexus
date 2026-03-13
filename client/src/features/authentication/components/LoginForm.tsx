@@ -7,10 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Eye, EyeOff } from 'lucide-react';
 import { userLogInSchema, type userLogInType } from '@/validations/auth.validation';
 import { toast } from 'sonner';
+import { type LoginFormProps } from '@/types';
 
-interface LoginFormProps {
-  role: 'patient' | 'doctor' | 'admin';
-}
 
 const LoginForm: FunctionComponent<LoginFormProps> = ({ role }) => {
   const [showPassword, setShowPassword] = useState(false);

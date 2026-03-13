@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   Header, 
   HeroSection, 
@@ -14,7 +13,7 @@ const LandingPage = () => {
   return (
     <div className="bg-background min-h-screen flex flex-col font-sans">
       <Header />
-      <main className="flex-grow">
+      <main className="grow">
         <HeroSection />
         <ProblemSection />
         <SolutionSection />
