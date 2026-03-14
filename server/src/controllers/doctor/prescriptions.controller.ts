@@ -21,8 +21,8 @@ interface CreatePrescriptionBody {
 
 /**
  * GET /api/doctors/me/medicines/search?q=<term>
- * Full-text search on medicines using a GIN-indexed tsvector column.
- * Falls back to ilike if the search_vector column is not yet populated.
+ * Ranked full-text search on medicines using a GIN-indexed tsvector column.
+ * Falls back to direct text search / ilike when the SQL RPC is unavailable.
  */
 export async function searchMedicines(
   req: Request,
@@ -35,14 +35,26 @@ export async function searchMedicines(
       throw new BadRequestError('Query parameter q must be at least 2 characters');
     }
 
-    // Try FTS via tsvector column (requires migration 002 to have been run)
+    const { data: rpcData, error: rpcError } = await (supabaseAdmin as any).rpc(
+      'search_medicines',
+      { p_query: q, p_limit: 25 }
+    );
+
+    if (!rpcError) {
+      sendSuccess(res, { medicines: rpcData ?? [] }, 'Medicines retrieved');
+      return;
+    }
+
+    console.warn('[searchMedicines] RPC search failed, falling back to direct FTS:', rpcError.message);
+
+    // Fallback: FTS directly on tsvector column
     const { data: ftsData, error: ftsError } = await supabaseAdmin
       .from('medicines')
       .select('id, medicine_name, composition, therapeutic_class, chemical_class, uses, side_effects, substitutes, description, image_url')
       .textSearch('search_vector', q, { type: 'websearch', config: 'english' })
       .limit(25);
 
-    // If FTS fails (column not yet indexed / backfilled), fall back to ilike
+    // If FTS also fails, fall back to ilike
     if (ftsError) {
       console.warn('[searchMedicines] FTS failed, falling back to ilike:', ftsError.message);
       const { data, error } = await supabaseAdmin
