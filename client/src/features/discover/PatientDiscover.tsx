@@ -13,13 +13,18 @@ import {
   Radio,
   Bell,
   BellOff,
+  FileText,
+  FlaskConical,
+  ShieldCheck,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { IconHeartbeat } from '@tabler/icons-react';
 import { useAuth } from '@/context/AuthContext';
-import { patientService } from '@/services/patient.service';
+import { patientService, type PatientPrescription, type PatientReport, type DocumentSelection } from '@/services/patient.service';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { useSlotStream, type SlotUpdatePayload } from '@/hooks/useSlotStream';
@@ -48,7 +53,7 @@ interface Slot {
   status: string;
 }
 
-type Step = 'search' | 'hospital' | 'slots' | 'confirm' | 'done';
+type Step = 'search' | 'hospital' | 'slots' | 'confirm' | 'grant-access' | 'done';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -81,6 +86,13 @@ const PatientDiscover = () => {
 
   // Waitlist — track which slot IDs the patient just joined so the button updates immediately
   const [waitlistedSlotIds, setWaitlistedSlotIds] = useState<Set<string>>(new Set());
+
+  // Grant-access step state
+  const [patientPrescriptions, setPatientPrescriptions] = useState<PatientPrescription[]>([]);
+  const [patientReports, setPatientReports] = useState<PatientReport[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<DocumentSelection[]>([]);
+  const [grantsLoading, setGrantsLoading] = useState(false);
+  const [grantsSaving, setGrantsSaving] = useState(false);
 
   // ── Handle incoming waitlist-accepted slot (from PatientDashboard) ──
   // When a patient accepts a waitlist offer they are navigated here with
@@ -306,16 +318,78 @@ const PatientDiscover = () => {
         booking_type: 'online',
       });
       setBookedAppt((res as any).data?.appointment ?? null);
-      setStep('done');
       toast.success('Appointment booked!');
-      // Notify PatientHome and PatientAppointments to re-fetch without a page reload
-      dispatchAppointmentBooked();
+      // Proceed to grant-access step so the patient can share documents
+      loadDocumentsForGrant();
+      setStep('grant-access');
     } catch (err: any) {
       toast.error(err?.message ?? 'Failed to book appointment');
     } finally {
       setBooking(false);
     }
   };
+
+  // ── Load patient documents for the grant-access step ──
+  const loadDocumentsForGrant = async () => {
+    setGrantsLoading(true);
+    setSelectedDocuments([]);
+    try {
+      const res = await patientService.getPassport();
+      const data = (res as any).data;
+      setPatientPrescriptions(data?.prescriptions ?? []);
+      setPatientReports(data?.reports ?? []);
+    } catch {
+      toast.error('Failed to load your documents');
+    } finally {
+      setGrantsLoading(false);
+    }
+  };
+
+  // ── Toggle document selection ──
+  const toggleDocument = (docType: 'prescription' | 'report', docId: string) => {
+    setSelectedDocuments((prev) => {
+      const exists = prev.some((d) => d.document_type === docType && d.document_id === docId);
+      if (exists) return prev.filter((d) => !(d.document_type === docType && d.document_id === docId));
+      return [...prev, { document_type: docType, document_id: docId }];
+    });
+  };
+
+  const isDocSelected = (docType: 'prescription' | 'report', docId: string) =>
+    selectedDocuments.some((d) => d.document_type === docType && d.document_id === docId);
+
+  // ── Select / deselect all ──
+  const selectAllDocuments = () => {
+    const all: DocumentSelection[] = [
+      ...patientPrescriptions.map((p) => ({ document_type: 'prescription' as const, document_id: p.id })),
+      ...patientReports.map((r) => ({ document_type: 'report' as const, document_id: r.id })),
+    ];
+    setSelectedDocuments(all);
+  };
+
+  const deselectAllDocuments = () => setSelectedDocuments([]);
+
+  // ── Submit grants ──
+  const submitGrants = async () => {
+    if (!selectedDoctor || selectedDocuments.length === 0) return;
+    setGrantsSaving(true);
+    try {
+      await patientService.createGrant({
+        granted_to_doctor_id: selectedDoctor.id,
+        documents: selectedDocuments,
+        valid_days: 90,
+        source: 'booking',
+      });
+      toast.success(`Shared ${selectedDocuments.length} document${selectedDocuments.length > 1 ? 's' : ''} with ${selectedDoctor.full_name}`);
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to share documents');
+    } finally {
+      setGrantsSaving(false);
+      setStep('done');
+    }
+  };
+
+  // ── Skip grants (go straight to done) ──
+  const skipGrants = () => setStep('done');
 
   // ── Join waitlist for a booked slot ──
   const joinWaitlistForSlot = async (slot: Slot) => {
@@ -344,6 +418,9 @@ const PatientDiscover = () => {
     setSlots([]);
     setStreamConnected(false);
     setWaitlistedSlotIds(new Set());
+    setPatientPrescriptions([]);
+    setPatientReports([]);
+    setSelectedDocuments([]);
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -360,6 +437,7 @@ const PatientDiscover = () => {
                 size="icon"
                 onClick={() => {
                   if (step === 'done') { resetToSearch(); return; }
+                  if (step === 'grant-access') { /* can't go back — booking already confirmed */ setStep('done'); return; }
                   if (step === 'confirm') { setStep('slots'); return; }
                   if (step === 'slots') { setStep('hospital'); return; }
                   if (step === 'hospital') { setStep('search'); return; }
@@ -748,6 +826,159 @@ const PatientDiscover = () => {
             >
               {booking ? 'Booking…' : 'Confirm Appointment'}
             </Button>
+          </div>
+        )}
+
+        {/* ── Step: Grant Access ── */}
+        {step === 'grant-access' && selectedDoctor && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div>
+              <div className="flex items-center gap-3">
+                <ShieldCheck className="h-8 w-8 text-primary" />
+                <div>
+                  <h1 className="text-3xl font-light tracking-tight">Share Medical Records</h1>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    Select which documents to share with <span className="font-medium text-foreground">{selectedDoctor.full_name}</span>. This is optional — you can skip or manage access later from your Health Passport.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {grantsLoading ? (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : patientPrescriptions.length === 0 && patientReports.length === 0 ? (
+              <div className="bg-card rounded-xl border p-10 text-center text-muted-foreground">
+                <FileText className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                <p>No medical documents found.</p>
+                <p className="text-sm mt-1">You don't have any prescriptions or reports yet.</p>
+              </div>
+            ) : (
+              <>
+                {/* Select / Deselect All */}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedDocuments.length} of {patientPrescriptions.length + patientReports.length} selected
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={selectAllDocuments}>
+                      Select All
+                    </Button>
+                    {selectedDocuments.length > 0 && (
+                      <Button variant="ghost" size="sm" onClick={deselectAllDocuments}>
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Prescriptions */}
+                {patientPrescriptions.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      Prescriptions ({patientPrescriptions.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {patientPrescriptions.map((rx) => {
+                        const checked = isDocSelected('prescription', rx.id);
+                        return (
+                          <label
+                            key={rx.id}
+                            className={`flex items-start gap-3 bg-card rounded-lg border p-3.5 cursor-pointer transition-colors ${
+                              checked ? 'border-primary/40 bg-primary/5' : 'hover:border-muted-foreground/30'
+                            }`}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleDocument('prescription', rx.id)}
+                              className="mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {rx.illness_description || 'Prescription'}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                Dr. {rx.doctors?.full_name ?? 'Unknown'}
+                                {rx.appointments?.hospitals?.name && ` · ${rx.appointments.hospitals.name}`}
+                                {rx.issued_at && ` · ${format(parseISO(rx.issued_at), 'MMM d, yyyy')}`}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Reports */}
+                {patientReports.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <FlaskConical className="h-4 w-4 text-muted-foreground" />
+                      Reports ({patientReports.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {patientReports.map((rpt) => {
+                        const checked = isDocSelected('report', rpt.id);
+                        return (
+                          <label
+                            key={rpt.id}
+                            className={`flex items-start gap-3 bg-card rounded-lg border p-3.5 cursor-pointer transition-colors ${
+                              checked ? 'border-primary/40 bg-primary/5' : 'hover:border-muted-foreground/30'
+                            }`}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleDocument('report', rpt.id)}
+                              className="mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {rpt.report_name}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {rpt.report_type}
+                                {rpt.hospitals?.name && ` · ${rpt.hospitals.name}`}
+                                {rpt.uploaded_at && ` · ${format(parseISO(rpt.uploaded_at), 'MMM d, yyyy')}`}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1 h-12"
+                onClick={skipGrants}
+              >
+                Skip for Now
+              </Button>
+              <Button
+                className="flex-1 h-12"
+                onClick={submitGrants}
+                disabled={selectedDocuments.length === 0 || grantsSaving}
+              >
+                {grantsSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sharing…
+                  </>
+                ) : (
+                  `Share ${selectedDocuments.length > 0 ? selectedDocuments.length + ' ' : ''}Document${selectedDocuments.length !== 1 ? 's' : ''}`
+                )}
+              </Button>
+            </div>
           </div>
         )}
 

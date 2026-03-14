@@ -15,6 +15,7 @@ const navigationItems = [
   { name: 'Queue', key: 'queue' },
   { name: 'Schedule', key: 'schedule' },
   { name: 'Prescriptions', key: 'prescriptions' },
+  { name: 'Referrals', key: 'referrals' },
 ];
 
 export const DoctorDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {

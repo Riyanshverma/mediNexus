@@ -18,6 +18,10 @@ export type ReportType = 'lab' | 'radiology' | 'pathology' | 'discharge_summary'
 
 export type HospitalType = 'government' | 'private' | 'clinic' | 'nursing_home';
 
+export type ReferralStatus = 'pending' | 'accepted' | 'declined' | 'completed';
+
+export type GrantSource = 'manual' | 'booking' | 'referral';
+
 // ─── Table Row Types ────────────────────────────────────────────────
 
 export interface Hospital {
@@ -166,8 +170,22 @@ export interface RecordAccessGrant {
   granted_to_hospital_id: string | null;
   granted_to_doctor_id: string | null;
   record_types: string[];
+  document_type: string | null;
+  document_id: string | null;
+  source: GrantSource;
   valid_until: string;
   created_at: string;
+}
+
+export interface Referral {
+  id: string;
+  referring_doctor_id: string;
+  referred_to_doctor_id: string;
+  patient_id: string;
+  reason: string | null;
+  status: ReferralStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SearchCache {
@@ -616,6 +634,9 @@ export type Database = {
           granted_to_hospital_id: string | null;
           granted_to_doctor_id: string | null;
           record_types: string[];
+          document_type: string | null;
+          document_id: string | null;
+          source: string;
           valid_until: string;
           created_at: string;
         };
@@ -625,6 +646,9 @@ export type Database = {
           granted_to_hospital_id?: string | null;
           granted_to_doctor_id?: string | null;
           record_types: string[];
+          document_type?: string | null;
+          document_id?: string | null;
+          source?: string;
           valid_until: string;
           created_at?: string | null;
         };
@@ -634,6 +658,9 @@ export type Database = {
           granted_to_hospital_id?: string | null;
           granted_to_doctor_id?: string | null;
           record_types?: string[];
+          document_type?: string | null;
+          document_id?: string | null;
+          source?: string;
           valid_until?: string;
           created_at?: string | null;
         };
@@ -687,6 +714,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      referrals: {
+        Row: {
+          id: string;
+          referring_doctor_id: string;
+          referred_to_doctor_id: string;
+          patient_id: string;
+          reason: string | null;
+          status: ReferralStatus;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          referring_doctor_id: string;
+          referred_to_doctor_id: string;
+          patient_id: string;
+          reason?: string | null;
+          status?: ReferralStatus;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          referring_doctor_id?: string;
+          referred_to_doctor_id?: string;
+          patient_id?: string;
+          reason?: string | null;
+          status?: ReferralStatus;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -718,6 +778,7 @@ export type Database = {
       waitlist_status: WaitlistStatus;
       report_type: ReportType;
       hospital_type: HospitalType;
+      referral_status: ReferralStatus;
     };
     CompositeTypes: {
       [_ in never]: never;

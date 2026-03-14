@@ -112,6 +112,44 @@ export interface CreatePrescriptionPayload {
   }[];
 }
 
+export interface DoctorSearchResult {
+  id: string;
+  full_name: string;
+  specialisation: string;
+  hospital_id: string;
+  hospitals?: { name: string; city: string } | null;
+}
+
+export interface Referral {
+  id: string;
+  referring_doctor_id: string;
+  referred_to_doctor_id: string;
+  patient_id: string;
+  reason: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  direction: 'sent' | 'received';
+  referring_doctor: {
+    id: string;
+    full_name: string;
+    specialisation: string;
+    hospitals?: { name: string; city: string } | null;
+  } | null;
+  referred_to_doctor: {
+    id: string;
+    full_name: string;
+    specialisation: string;
+    hospitals?: { name: string; city: string } | null;
+  } | null;
+  patient: {
+    id: string;
+    full_name: string;
+    phone_number: string | null;
+    email: string | null;
+  } | null;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const doctorService = {
@@ -198,4 +236,35 @@ export const doctorService = {
   // Patient passport
   getPatientPassport: (patientId: string) =>
     api.get<{ data: any }>(`/api/doctors/me/patients/${patientId}/passport`),
+
+  getAccessibleDocuments: (patientId: string) =>
+    api.get<{ data: { accessible_prescription_ids: string[]; accessible_report_ids: string[]; total: number } }>(
+      `/api/doctors/me/patients/${patientId}/accessible-documents`
+    ),
+
+  // Referrals
+  listReferrals: () =>
+    api.get<{ data: { referrals: Referral[] } }>('/api/doctors/me/referrals'),
+
+  createReferral: (payload: {
+    patient_id: string;
+    referred_to_doctor_id: string;
+    reason?: string;
+  }) =>
+    api.post<{ data: { referral: Referral; grants_copied: number } }>(
+      '/api/doctors/me/referrals',
+      payload
+    ),
+
+  updateReferralStatus: (referralId: string, status: 'accepted' | 'declined' | 'completed') =>
+    api.patch<{ data: { referral: Referral } }>(
+      `/api/doctors/me/referrals/${referralId}/status`,
+      { status }
+    ),
+
+  // Doctor search (for referrals)
+  searchDoctors: (q: string) =>
+    api.get<{ data: { doctors: DoctorSearchResult[] } }>(
+      `/api/doctors/search?q=${encodeURIComponent(q)}`
+    ),
 };

@@ -36,6 +36,7 @@ export interface PatientPassport {
   prescriptions: PatientPrescription[];
   reports: PatientReport[];
   grants: AccessGrant[];
+  referrals: PatientReferral[];
 }
 
 export interface PatientPrescription {
@@ -53,6 +54,7 @@ export interface PatientPrescription {
     qualifications?: string | null;
     registration_number?: string | null;
     department?: string | null;
+    hospitals?: { name: string; city: string } | null;
   } | null;
   appointments?: {
     hospital_id: string;
@@ -90,10 +92,51 @@ export interface AccessGrant {
   granted_to_hospital_id: string | null;
   granted_to_doctor_id: string | null;
   record_types: string[];
+  document_type: string | null;
+  document_id: string | null;
+  source: string;
   valid_until: string;
   created_at: string;
-  hospitals?: { name: string; city: string } | null;
-  doctors?: { full_name: string; specialisation: string } | null;
+  is_active: boolean;
+  doctor: {
+    id: string;
+    full_name: string;
+    specialisation: string;
+    hospitals?: { name: string; city: string } | null;
+  } | null;
+  document: {
+    id: string;
+    // Prescription fields
+    illness_description?: string | null;
+    issued_at?: string;
+    doctors?: { full_name: string } | null;
+    // Report fields
+    report_name?: string;
+    report_type?: string;
+    uploaded_at?: string;
+  } | null;
+}
+
+export interface PatientReferral {
+  id: string;
+  referring_doctor_id: string;
+  referred_to_doctor_id: string;
+  reason: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  referring_doctor: {
+    id: string;
+    full_name: string;
+    specialisation: string;
+    hospitals?: { name: string; city: string } | null;
+  } | null;
+  referred_to_doctor: {
+    id: string;
+    full_name: string;
+    specialisation: string;
+    hospitals?: { name: string; city: string } | null;
+  } | null;
 }
 
 export interface WaitlistEntry {
@@ -109,6 +152,11 @@ export interface WaitlistEntry {
     slot_end: string;
     doctors?: { full_name: string; specialisation: string; hospitals?: { name: string; city: string } | null } | null;
   } | null;
+}
+
+export interface DocumentSelection {
+  document_type: 'prescription' | 'report';
+  document_id: string;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -182,20 +230,23 @@ export const patientService = {
   getPrescription: (id: string) =>
     api.get<{ data: { prescription: PatientPrescription } }>(`/api/patients/me/prescriptions/${id}`),
 
-  // Access grants
+  // Access grants — document-level, doctor-targeted
   listGrants: () =>
     api.get<{ data: { grants: AccessGrant[] } }>('/api/patients/me/grants'),
 
   createGrant: (payload: {
-    granted_to_hospital_id?: string;
-    granted_to_doctor_id?: string;
-    record_types: string[];
+    granted_to_doctor_id: string;
+    documents: DocumentSelection[];
     valid_days?: number;
+    source?: 'manual' | 'booking' | 'referral';
   }) =>
-    api.post<{ data: { grant: AccessGrant } }>('/api/patients/me/grants', payload),
+    api.post<{ data: { grants: AccessGrant[] } }>('/api/patients/me/grants', payload),
 
   revokeGrant: (grantId: string) =>
     api.delete<{ data: null }>(`/api/patients/me/grants/${grantId}`),
+
+  revokeAllGrantsForDoctor: (doctorId: string) =>
+    api.delete<{ data: { revoked: number } }>(`/api/patients/me/grants/doctor/${doctorId}`),
 
   // Discovery
   discoverHospitals: (params: { q?: string; city?: string; speciality?: string } = {}) => {
