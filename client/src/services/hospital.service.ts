@@ -202,3 +202,58 @@ export const hospitalService = {
       `/api/hospitals/me/services/${serviceId}/availability?startDate=${startDate}&endDate=${endDate}`
     ),
 };
+
+// ─── Report Upload ─────────────────────────────────────────────────────────────
+// Exported separately because it uses raw fetch (multipart), not the api helper.
+
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
+
+export interface HospitalPatient {
+  id: string;
+  full_name: string;
+  phone_number: string | null;
+  email: string | null;
+}
+
+export interface PatientReport {
+  id: string;
+  report_name: string;
+  report_type: string;
+  report_url: string;
+  uploaded_at: string;
+}
+
+export async function uploadPatientReport(
+  patientId: string,
+  payload: {
+    report_name: string;
+    report_type: 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
+    file: File;
+  }
+): Promise<{ data: { report: any } }> {
+  const form = new FormData();
+  form.append('report_name', payload.report_name);
+  form.append('report_type', payload.report_type);
+  form.append('file', payload.file);
+
+  const res = await fetch(`${BASE_URL}/api/hospitals/me/patients/${patientId}/reports`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+    // Note: do NOT set Content-Type — browser will set it with the correct boundary
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.message ?? json?.error ?? `Upload failed (${res.status})`);
+  }
+  return json;
+}
+
+export async function searchHospitalPatients(q: string): Promise<{ data: { patients: HospitalPatient[] } }> {
+  return api.get(`/api/hospitals/me/patients/search?q=${encodeURIComponent(q)}`);
+}
+
+export async function listPatientReportsForAdmin(patientId: string): Promise<{ data: { reports: PatientReport[] } }> {
+  return api.get(`/api/hospitals/me/patients/${patientId}/reports`);
+}

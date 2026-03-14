@@ -271,6 +271,11 @@ export const patientService = {
       `/api/discover/doctors/${doctorId}/slots${date ? `?date=${date}` : ''}`
     ),
 
+  searchDoctors: (q: string) =>
+    api.get<{ data: { doctors: any[] } }>(
+      `/api/discover/doctors/search?q=${encodeURIComponent(q)}`
+    ),
+
   // Service Discovery & Booking
   discoverServices: (params: { hospitalId?: string; search?: string; department?: string; availableOn?: string } = {}) => {
     const qs = new URLSearchParams(

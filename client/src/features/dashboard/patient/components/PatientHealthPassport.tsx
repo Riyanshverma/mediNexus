@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileText,
   Pill,
@@ -13,13 +13,26 @@ import {
   UserRound,
   Building2,
   ArrowRightLeft,
+  Plus,
+  Search,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import {
   patientService,
   type PatientPassport,
   type AccessGrant,
   type PatientReferral,
+  type DocumentSelection,
 } from '@/services/patient.service';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
@@ -82,6 +95,17 @@ export const PatientHealthPassport = () => {
   // Collapsible doctor groups
   const [expandedDoctors, setExpandedDoctors] = useState<Set<string>>(new Set());
 
+  // ── Grant Access Dialog ──
+  const [grantDialogOpen, setGrantDialogOpen] = useState(false);
+  const [grantDoctorQuery, setGrantDoctorQuery] = useState('');
+  const [grantDoctorResults, setGrantDoctorResults] = useState<any[]>([]);
+  const [grantDoctorSearching, setGrantDoctorSearching] = useState(false);
+  const [grantSelectedDoctor, setGrantSelectedDoctor] = useState<any | null>(null);
+  const [grantSelectedDocs, setGrantSelectedDocs] = useState<DocumentSelection[]>([]);
+  const [grantValidDays, setGrantValidDays] = useState(30);
+  const [grantSaving, setGrantSaving] = useState(false);
+  const grantDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const fetchPassport = async () => {
     setLoading(true);
     try {
@@ -97,6 +121,68 @@ export const PatientHealthPassport = () => {
   useEffect(() => {
     fetchPassport();
   }, []);
+
+  // ── Grant dialog: debounced doctor search ──
+  useEffect(() => {
+    if (!grantDialogOpen) return;
+    if (grantDoctorQuery.length < 2) {
+      setGrantDoctorResults([]);
+      return;
+    }
+    if (grantDebounceRef.current) clearTimeout(grantDebounceRef.current);
+    grantDebounceRef.current = setTimeout(async () => {
+      setGrantDoctorSearching(true);
+      try {
+        const res = await patientService.searchDoctors(grantDoctorQuery);
+        setGrantDoctorResults((res as any).data?.doctors ?? []);
+      } catch {
+        setGrantDoctorResults([]);
+      } finally {
+        setGrantDoctorSearching(false);
+      }
+    }, 300);
+    return () => { if (grantDebounceRef.current) clearTimeout(grantDebounceRef.current); };
+  }, [grantDoctorQuery, grantDialogOpen]);
+
+  const openGrantDialog = () => {
+    setGrantDoctorQuery('');
+    setGrantDoctorResults([]);
+    setGrantSelectedDoctor(null);
+    setGrantSelectedDocs([]);
+    setGrantValidDays(30);
+    setGrantDialogOpen(true);
+  };
+
+  const toggleGrantDoc = (docType: 'prescription' | 'report', docId: string) => {
+    setGrantSelectedDocs(prev => {
+      const exists = prev.some(d => d.document_type === docType && d.document_id === docId);
+      if (exists) return prev.filter(d => !(d.document_type === docType && d.document_id === docId));
+      return [...prev, { document_type: docType, document_id: docId }];
+    });
+  };
+
+  const isGrantDocSelected = (docType: 'prescription' | 'report', docId: string) =>
+    grantSelectedDocs.some(d => d.document_type === docType && d.document_id === docId);
+
+  const handleSubmitGrant = async () => {
+    if (!grantSelectedDoctor || grantSelectedDocs.length === 0) return;
+    setGrantSaving(true);
+    try {
+      await patientService.createGrant({
+        granted_to_doctor_id: grantSelectedDoctor.id,
+        documents: grantSelectedDocs,
+        valid_days: grantValidDays,
+        source: 'manual',
+      });
+      toast.success(`Shared ${grantSelectedDocs.length} document${grantSelectedDocs.length !== 1 ? 's' : ''} with Dr. ${grantSelectedDoctor.full_name}`);
+      setGrantDialogOpen(false);
+      fetchPassport();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Failed to grant access');
+    } finally {
+      setGrantSaving(false);
+    }
+  };
 
   // Fetcher for the PDF modal
   const fetchPDFData = useCallback(async (id: string): Promise<PDFPrescriptionData> => {
@@ -273,8 +359,8 @@ export const PatientHealthPassport = () => {
             {/* ── Access Granted ── */}
             {tab === 'grants' && (
               <div className="space-y-4">
-                {/* Summary */}
-                {(activeGrantCount > 0 || expiredGrantCount > 0) && (
+                {/* Summary + Grant button */}
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                       <Shield className="h-3.5 w-3.5 text-green-500" />
@@ -287,10 +373,14 @@ export const PatientHealthPassport = () => {
                       </span>
                     )}
                   </div>
-                )}
+                  <Button size="sm" onClick={openGrantDialog}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Grant Access
+                  </Button>
+                </div>
 
                 <p className="text-xs text-muted-foreground">
-                  Grant access to your documents when booking an appointment. You can revoke access at any time.
+                  Grant specific doctors access to your documents. Only you can grant or revoke access.
                 </p>
 
                 {groupedGrants.length === 0 ? (
@@ -524,6 +614,190 @@ export const PatientHealthPassport = () => {
           fetchData={fetchPDFData}
         />
       )}
+
+      {/* ── Grant Access Dialog ── */}
+      <Dialog open={grantDialogOpen} onOpenChange={setGrantDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Grant Document Access</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-5 py-2 pr-1">
+            {/* Step 1 — Doctor search */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Search for a doctor</p>
+              {grantSelectedDoctor ? (
+                <div className="flex items-center justify-between bg-primary/5 border rounded-lg px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium">Dr. {grantSelectedDoctor.full_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {grantSelectedDoctor.specialisation}
+                      {grantSelectedDoctor.hospitals?.name && ` · ${grantSelectedDoctor.hospitals.name}`}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    onClick={() => {
+                      setGrantSelectedDoctor(null);
+                      setGrantDoctorQuery('');
+                      setGrantDoctorResults([]);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search by name or specialisation..."
+                    value={grantDoctorQuery}
+                    onChange={(e) => setGrantDoctorQuery(e.target.value)}
+                    autoFocus
+                  />
+                  {grantDoctorSearching && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  {grantDoctorResults.length > 0 && (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {grantDoctorResults.map((doc) => (
+                        <button
+                          key={doc.id}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+                          onClick={() => {
+                            setGrantSelectedDoctor(doc);
+                            setGrantDoctorQuery('');
+                            setGrantDoctorResults([]);
+                          }}
+                        >
+                          <p className="font-medium">Dr. {doc.full_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {doc.specialisation}
+                            {doc.hospitals?.name && ` · ${doc.hospitals.name}`}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!grantDoctorSearching && grantDoctorQuery.length >= 2 && grantDoctorResults.length === 0 && (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-lg shadow-sm px-3 py-2 text-sm text-muted-foreground">
+                      No doctors found.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2 — Select documents */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Select documents to share</p>
+
+              {/* Prescriptions */}
+              {(passport?.prescriptions ?? []).length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium px-1">
+                    Prescriptions
+                  </p>
+                  {(passport?.prescriptions ?? []).map((rx) => (
+                    <label
+                      key={rx.id}
+                      className="flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors"
+                    >
+                      <Checkbox
+                        checked={isGrantDocSelected('prescription', rx.id)}
+                        onCheckedChange={() => toggleGrantDoc('prescription', rx.id)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {rx.illness_description ?? 'Prescription'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(parseISO(rx.issued_at), 'MMM d, yyyy')}
+                          {(rx as any).doctors ? ` · Dr. ${(rx as any).doctors.full_name}` : ''}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Reports */}
+              {(passport?.reports ?? []).length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium px-1">
+                    Reports
+                  </p>
+                  {(passport?.reports ?? []).map((report) => (
+                    <label
+                      key={report.id}
+                      className="flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors"
+                    >
+                      <Checkbox
+                        checked={isGrantDocSelected('report', report.id)}
+                        onCheckedChange={() => toggleGrantDoc('report', report.id)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{report.report_name}</p>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {report.report_type.replace('_', ' ')} ·{' '}
+                          {format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {(passport?.prescriptions ?? []).length === 0 && (passport?.reports ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg">
+                  No documents available to share.
+                </p>
+              )}
+            </div>
+
+            {/* Step 3 — Valid duration */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Access duration</p>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={grantValidDays}
+                  onChange={(e) => setGrantValidDays(Math.min(365, Math.max(1, Number(e.target.value))))}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">days from today</span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-4 border-t mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setGrantDialogOpen(false)}
+              disabled={grantSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitGrant}
+              disabled={!grantSelectedDoctor || grantSelectedDocs.length === 0 || grantSaving}
+            >
+              {grantSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Share2 className="h-4 w-4 mr-2" />
+              )}
+              Share {grantSelectedDocs.length > 0 ? `${grantSelectedDocs.length} ` : ''}
+              {grantSelectedDocs.length === 1 ? 'Document' : 'Documents'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

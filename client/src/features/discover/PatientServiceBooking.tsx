@@ -99,6 +99,8 @@ const PatientServiceBooking = () => {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Used to discard stale loadSlots responses when service/month changes quickly
   const loadIdRef = useRef(0);
+  // Tracks current locked slot for cleanup on unmount
+  const selectedSlotRef = useRef<ServiceSlot | null>(null);
 
   // ── Search ──────────────────────────────────────────────────────────────────
 
@@ -111,6 +113,20 @@ const PatientServiceBooking = () => {
   }, []);
 
   useEffect(() => { searchServices(''); }, []);
+
+  // Release service slot lock on component unmount (covers Close button / browser navigation)
+  useEffect(() => {
+    return () => {
+      if (selectedSlotRef.current) {
+        patientService.releaseServiceSlot(selectedSlotRef.current.id).catch(() => {});
+      }
+    };
+  }, []);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    selectedSlotRef.current = selectedSlot;
+  }, [selectedSlot]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -197,6 +213,9 @@ const PatientServiceBooking = () => {
   };
 
   const resetToSearch = () => {
+    if (selectedSlot) {
+      patientService.releaseServiceSlot(selectedSlot.id).catch(() => {});
+    }
     setStep('search');
     setSelectedService(null);
     setSelectedSlot(null);
