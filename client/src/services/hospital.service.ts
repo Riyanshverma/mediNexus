@@ -45,6 +45,27 @@ export interface HospitalService {
   fee: number;
   pay_at_counter: boolean;
   is_available: boolean;
+  daily_slot_limit?: number;
+}
+
+export interface ServiceSlot {
+  id: string;
+  service_id: string;
+  slot_date: string;
+  slot_number: number;
+  status: 'available' | 'locked' | 'booked' | 'cancelled';
+  locked_by: string | null;
+  locked_until: string | null;
+}
+
+export interface ServiceSlotWithService extends ServiceSlot {
+  hospital_services: {
+    id: string;
+    service_name: string;
+    department: string;
+    fee: number;
+    hospital_id: string;
+  };
 }
 
 export interface HospitalAppointment {
@@ -133,4 +154,51 @@ export const hospitalService = {
     slot_duration_mins: number;
     days_ahead?: number;
   }) => api.post(`/api/hospitals/me/doctors/${doctorId}/slots/generate`, payload),
+
+  // Service Slots Management
+  generateServiceSlots: (payload: {
+    serviceId: string;
+    startDate: string;
+    endDate: string;
+    numberOfSlots?: number;
+  }) => api.post('/api/hospitals/me/services/slots/generate', payload),
+
+  updateServiceDaySlots: (payload: {
+    serviceId: string;
+    slotDate: string;
+    numberOfSlots: number;
+  }) => api.patch<{ data: { serviceId: string; slotDate: string; requestedSlots: number; total: number; available: number; booked: number; locked: number } }>(
+    '/api/hospitals/me/services/slots/day',
+    payload
+  ),
+
+  listServiceSlots: (params?: { serviceId?: string; date?: string; startDate?: string; endDate?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.serviceId) query.set('serviceId', params.serviceId);
+    if (params?.date) query.set('date', params.date);
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    if (params?.status) query.set('status', params.status);
+    return api.get<{ data: { services: (HospitalService & { slots: ServiceSlot[] })[] } }>(
+      `/api/hospitals/me/services/slots${query.toString() ? `?${query}` : ''}`
+    );
+  },
+
+  getServiceSlot: (slotId: string) =>
+    api.get<{ data: { slot: ServiceSlotWithService } }>(`/api/hospitals/me/services/slots/${slotId}`),
+
+  deleteServiceSlot: (slotId: string) =>
+    api.delete<{ data: { success: boolean } }>(`/api/hospitals/me/services/slots/${slotId}`),
+
+  bulkDeleteServiceSlots: (payload: {
+    serviceId: string;
+    startDate: string;
+    endDate: string;
+    status?: string;
+  }) => api.post('/api/hospitals/me/services/slots/bulk-delete', payload),
+
+  getServiceAvailability: (serviceId: string, startDate: string, endDate: string) =>
+    api.get<{ data: { service: HospitalService; availability: Record<string, { total: number; available: number; booked: number; locked: number }> } }>(
+      `/api/hospitals/me/services/${serviceId}/availability?startDate=${startDate}&endDate=${endDate}`
+    ),
 };

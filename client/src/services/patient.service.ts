@@ -265,4 +265,40 @@ export const patientService = {
     api.get<{ data: { doctor: any; slots: any[] } }>(
       `/api/discover/doctors/${doctorId}/slots${date ? `?date=${date}` : ''}`
     ),
+
+  // Service Discovery & Booking
+  discoverServices: (params: { hospitalId?: string; search?: string; department?: string; availableOn?: string } = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v) as [string, string][]
+    ).toString();
+    return api.get<{ data: { services: any[] } }>(
+      `/api/services/discover${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  getServiceSlots: (serviceId: string, params?: { date?: string; startDate?: string; endDate?: string }) => {
+    const qs = new URLSearchParams(
+      Object.entries(params || {}).filter(([, v]) => v) as [string, string][]
+    ).toString();
+    return api.get<{ data: { service: any; slots: any } }>(
+      `/api/services/${serviceId}/slots${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  lockServiceSlot: (slotId: string) =>
+    api.post<{ data: { slot: any; lockedUntil: string } }>('/api/services/lock', { slotId }),
+
+  bookServiceSlot: (payload: { slotId: string; notes?: string }) =>
+    api.post<{ data: { appointment: any; service: any } }>('/api/services/book', payload),
+
+  releaseServiceSlot: (slotId: string) =>
+    api.patch<{ data: { success: boolean } }>(`/api/services/${slotId}/release`),
+
+  listMyServiceAppointments: (status?: string) =>
+    api.get<{ data: { appointments: any[] } }>(
+      `/api/services/me/appointments${status ? `?status=${status}` : ''}`
+    ),
+
+  cancelServiceAppointment: (appointmentId: string) =>
+    api.patch<{ data: { success: boolean } }>(`/api/services/me/appointments/${appointmentId}/cancel`),
 };

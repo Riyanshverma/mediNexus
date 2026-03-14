@@ -8,6 +8,7 @@ import { LoginPage, SignupPage, DoctorSetupPage } from '@/features/authenticatio
 import { PatientDashboard, AdminDashboard, DoctorDashboard } from '@/features/dashboard';
 import { DoctorOnBoardPage } from '@/features/doctor-onboard';
 import PatientDiscover from '@/features/discover/PatientDiscover';
+import PatientServiceBooking from '@/features/discover/PatientServiceBooking';
 
 const App = () => (
   <Router>
@@ -44,6 +45,7 @@ const App = () => (
                 <Routes>
                   <Route path="dashboard" element={<PatientDashboard />} />
                   <Route path="discover" element={<PatientDiscover />} />
+                  <Route path="services" element={<PatientServiceBooking />} />
                 </Routes>
               </ProtectedRoute>
             }
