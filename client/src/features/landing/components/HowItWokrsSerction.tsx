@@ -32,24 +32,24 @@ const HowItWorksSection = () => {
   return (
     <section id="how-it-works" className="py-24 container mx-auto max-w-6xl px-4">
       <div className="text-center mb-12">
-        <Badge variant="outline" className="mb-6 rounded-full px-4 py-1 font-normal">
+        <Badge variant="outline" className="mb-6 rounded-full px-4 py-1.5 font-medium bg-primary/5">
           How It Works
         </Badge>
-        <h2 className="text-4xl font-light mb-4 font-serif">
+        <h2 className="text-4xl md:text-5xl font-light mb-6 font-serif">
           Tailored for every stakeholder
         </h2>
-        <p className="text-muted-foreground max-w-4xl mx-auto text-lg">
+        <p className="text-muted-foreground max-w-4xl mx-auto text-lg leading-relaxed">
           Whether you are seeking care, providing it, or managing an entire facility, mediNexus seamlessly adapts to your workflow.
         </p>
       </div>
 
       <div className="flex justify-center mb-12">
-        <div className="inline-flex items-center p-1.5 bg-muted/50 rounded-full border">
+        <div className="inline-flex items-center p-1.5 bg-muted/50 rounded-full border shadow-sm">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center px-6 py-2.5 rounded-full text-sm font-medium transition-all ${
+              className={`flex items-center px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-200 ${
                 activeTab === tab.id
                   ? "bg-background shadow-sm text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-background/50"
@@ -64,12 +64,17 @@ const HowItWorksSection = () => {
 
       <div className="grid md:grid-cols-3 gap-6 relative">
         {content[activeTab].map((item, idx) => (
-          <div key={idx} className="relative p-8 border rounded-2xl bg-card shadow-sm group hover:border-primary/30 transition-all">
-            <span className="text-7xl font-serif font-light text-primary/10 absolute top-4 right-6 group-hover:text-primary/20 transition-colors">
+          <div 
+            key={idx} 
+            className="relative p-8 border rounded-2xl bg-card shadow-sm hover:shadow-xl hover:border-primary/30 transition-all duration-300 group"
+          >
+            <span className="text-8xl font-serif font-light text-primary/10 absolute top-2 right-6 group-hover:text-primary/20 transition-colors">
               {item.step}
             </span>
-            <h3 className="text-xl font-medium mb-3 mt-8 relative z-10">{item.title}</h3>
-            <p className="text-muted-foreground relative z-10">{item.desc}</p>
+            <div className="relative z-10">
+              <h3 className="text-xl font-medium mb-3 mt-4">{item.title}</h3>
+              <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
+            </div>
           </div>
         ))}
       </div>
