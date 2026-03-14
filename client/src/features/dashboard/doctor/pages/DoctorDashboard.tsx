@@ -1,9 +1,41 @@
-const DoctorDashboard = () => {
-  return (
-    <div>
-      Doctor
-    </div>
-  )
-}
+import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { DoctorDashboardHeader, DoctorQueue, DoctorSchedule, DoctorPrescriptions } from '../..';
 
-export default DoctorDashboard
+const DoctorDashboard = () => {
+  const location = useLocation();
+  // We use "queue" as the default home view since it's their daily workspace
+  const [activeTab, setActiveTab] = useState('queue');
+
+  useEffect(() => {
+    if (location.state?.tab) {
+      setActiveTab(location.state.tab);
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'queue':
+        return <DoctorQueue />;
+      case 'schedule':
+        return <DoctorSchedule />;
+      case 'prescriptions':
+        return <DoctorPrescriptions />;
+      default:
+        return <DoctorQueue />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-muted/20">
+      <DoctorDashboardHeader activeTab={activeTab} setActiveTab={setActiveTab} />
+      
+      <main className="w-full max-w-7xl mx-auto">
+        {renderContent()}
+      </main>
+    </div>
+  );
+};
+
+export default DoctorDashboard;

@@ -62,10 +62,18 @@ export const doctorOnboardSchema = z.object({
   specialization: z.string().min(2, "Specialization is required"),
   department: z.string().min(2, "Department is required"),
   qualifications: z.string().min(2, "Qualifications are required"),
-  experienceYears: z.number().min(0, "Experience must be 0 or greater"),
+  
+  // 1. Change to z.coerce.number()
+  experienceYears: z.coerce.number().min(0, "Experience must be 0 or greater"),
+  
   registrationNumber: z.string().min(2, "Medical Registration Number is required"),
-  consultationFee: z.number().min(0, "Fee must be 0 or greater"),
-  slotDuration: z.number().min(5, "Slot duration must be at least 5 mins"),
+  
+  // 2. Change to z.coerce.number()
+  consultationFee: z.coerce.number().min(0, "Fee must be 0 or greater"),
+  
+  // 3. Change to z.coerce.number()
+  slotDuration: z.coerce.number().min(5, "Slot duration must be at least 5 mins"),
+  
   availableFrom: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)"),
   availableTo: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid time format (HH:MM)"),
   bio: z.string().max(500, "Bio max 500 characters").optional(),

@@ -7,9 +7,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { doctorOnboardSchema, type DoctorOnboardType } from '@/validations/auth.validation';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 export default function DoctorOnBoardForm() {
-  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm<DoctorOnboardType>({
+  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(doctorOnboardSchema),
     defaultValues: {
       slotDuration: 15,
@@ -18,12 +19,14 @@ export default function DoctorOnBoardForm() {
       experienceYears: 0,
     }
   });
+    const navigate = useNavigate();
 
   const onSubmit = async (data: DoctorOnboardType) => {
     try {
       console.log('Doctor Onboarding Data:', data);
       // await doctorService.onboard(data);
-      toast.success("Profile created successfully!");
+      toast.success("Doctor onboarded successfully!");
+      navigate("/doctor/dashboard");
     } catch (error: any) {
       console.error(error);
       // toast.error(error.message);
