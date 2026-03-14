@@ -16,13 +16,11 @@ export const PatientDashboard = () => {
     }
   }, [location.state]);
 
-  // Called when the patient accepts a waitlist offer — navigate to Discover
-  // with the locked slot pre-loaded so they can confirm the booking immediately.
   const handleOfferAccepted = (slot: any, lockedUntil: string) => {
-    navigate('/patient/discover', {
-      state: { waitlistSlot: { ...slot, locked_until: lockedUntil } },
-    });
-  };
+  navigate('/patient/discover', {
+    state: { waitlistSlot: { ...slot, locked_until: lockedUntil } },
+  });
+};
 
   const renderContent = () => {
     switch (activeTab) {

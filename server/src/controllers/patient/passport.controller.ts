@@ -59,7 +59,7 @@ export async function getPatientPassport(
         profile: patient,
         prescriptions: prescriptionsResult.data ?? [],
         reports: reportsResult.data ?? [],
-        active_grants: grantsResult.data ?? [],
+        grants: grantsResult.data ?? [],
       },
       'Health passport retrieved'
     );
