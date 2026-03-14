@@ -78,13 +78,11 @@ interface ApiEnvelope<T> {
 
 export type LoginResponse = ApiEnvelope<{
   user: AuthUser;
-  session: AuthSession;
 }>;
 
 export type RegisterResponse = ApiEnvelope<{
   user: AuthUser;
-  session: AuthSession;
-  profile: Record<string, unknown>;
+  profile?: Record<string, unknown>;
 }>;
 
 export type MeResponse = ApiEnvelope<{

@@ -151,7 +151,7 @@ const DoctorSetupPage = () => {
     if (!inviteToken) return;
 
     try {
-      const { data: res } = await authService.doctorSetup(
+      await authService.doctorSetup(
         {
           password: data.password,
           full_name: data.full_name,
@@ -169,11 +169,7 @@ const DoctorSetupPage = () => {
         inviteToken,
       );
 
-      await applySession(
-        res.session.access_token,
-        res.session.refresh_token,
-        res.session.expires_at,
-      );
+      await applySession();
 
       toast.success('Account set up successfully. Welcome!');
       navigate(ROLE_DASHBOARD['doctor'], { replace: true });

@@ -1,86 +1,66 @@
-import {
-  clearTokens,
-  getAccessToken,
-  getRefreshToken,
-  isTokenExpired,
-  saveTokens,
-} from './token';
-
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type RequestOptions = Omit<RequestInit, 'headers'> & {
   /**
-   * When true, no Authorization header is attached (login / register endpoints).
+   * When true, no Authorization header is attached and the request is not
+   * retried after a 401 (login / register endpoints).
    * Ignored if `bearerToken` is provided.
    */
   skipAuth?: boolean;
   /**
-   * Use this specific token as the Bearer credential instead of the one from
-   * localStorage.  Useful for the doctor invite setup flow where Supabase
-   * returns the token in the URL hash.
+   * Use this specific token as the Bearer credential instead of the cookie.
+   * Used for the doctor invite setup flow where Supabase returns the token
+   * in the URL hash.
    */
   bearerToken?: string;
   headers?: Record<string, string>;
 };
 
-// ─── Token refresh queue ──────────────────────────────────────────────────────
+// ─── Silent refresh ───────────────────────────────────────────────────────────
 
 let isRefreshing = false;
-let refreshQueue: Array<(token: string | null) => void> = [];
+let refreshQueue: Array<(ok: boolean) => void> = [];
 
-async function doRefresh(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
+/**
+ * Attempts to silently refresh the session by calling POST /api/auth/refresh.
+ * The server reads the refresh token from the httpOnly cookie and sets new
+ * auth cookies on success.
+ *
+ * Returns true if new cookies were set, false if the session is unrecoverable.
+ */
+async function doRefresh(): Promise<boolean> {
   try {
     const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: 'include',
     });
-
-    if (!res.ok) {
-      clearTokens();
-      return null;
-    }
-
-    const body = await res.json();
-    const session = body?.data?.session;
-    if (!session?.access_token) {
-      clearTokens();
-      return null;
-    }
-
-    saveTokens(session.access_token, session.refresh_token, session.expires_at);
-    return session.access_token as string;
+    return res.ok;
   } catch {
-    clearTokens();
-    return null;
+    return false;
   }
 }
 
-async function getValidToken(): Promise<string | null> {
-  if (!isTokenExpired()) {
-    return getAccessToken();
-  }
-
-  // Serialise concurrent refresh attempts
+/**
+ * Serialises concurrent refresh attempts so only one refresh request is
+ * in-flight at a time.  All concurrent callers await the same promise.
+ */
+async function refreshOnce(): Promise<boolean> {
   if (isRefreshing) {
-    return new Promise<string | null>((resolve) => {
+    return new Promise<boolean>((resolve) => {
       refreshQueue.push(resolve);
     });
   }
 
   isRefreshing = true;
-  const newToken = await doRefresh();
+  const ok = await doRefresh();
   isRefreshing = false;
 
-  refreshQueue.forEach((cb) => cb(newToken));
+  refreshQueue.forEach((cb) => cb(ok));
   refreshQueue = [];
 
-  return newToken;
+  return ok;
 }
 
 // ─── Core request helper ──────────────────────────────────────────────────────
@@ -93,19 +73,50 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     ...extraHeaders,
   };
 
+  // Doctor invite setup flow: explicit Bearer token overrides cookie auth
   if (bearerToken) {
     headers['Authorization'] = `Bearer ${bearerToken}`;
-  } else if (!skipAuth) {
-    const token = await getValidToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
   }
 
   const res = await fetch(`${BASE_URL}${path}`, {
     ...fetchOptions,
     headers,
+    credentials: 'include', // always send & receive httpOnly cookies
   });
+
+  // On 401, attempt a silent token refresh and retry — unless this is a
+  // public endpoint (skipAuth) or an explicit bearerToken request.
+  if (res.status === 401 && !skipAuth && !bearerToken) {
+    const refreshed = await refreshOnce();
+    if (refreshed) {
+      // Retry the original request with the new cookies
+      const retryRes = await fetch(`${BASE_URL}${path}`, {
+        ...fetchOptions,
+        headers,
+        credentials: 'include',
+      });
+
+      const retryJson = await retryRes.json().catch(() => null);
+
+      if (!retryRes.ok) {
+        const message: string = retryJson?.message ?? `Request failed (${retryRes.status})`;
+        throw new Error(message);
+      }
+
+      return retryJson as T;
+    }
+
+    // Refresh failed — session is gone; broadcast so all tabs log out
+    try {
+      const channel = new BroadcastChannel('mdn_auth');
+      channel.postMessage('logout');
+      channel.close();
+    } catch {
+      // BroadcastChannel not available in this environment — ignore
+    }
+
+    throw new Error('Session expired. Please log in again.');
+  }
 
   const json = await res.json().catch(() => null);
 

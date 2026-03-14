@@ -3,6 +3,7 @@ import { supabaseAdmin, supabaseAnon } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, ConflictError } from '../../utils/errors.js';
 import type { RegisterHospitalAdminBody } from '../../validators/auth/hospital-admin.validator.js';
+import { setAuthCookies } from './session.controller.js';
 
 /**
  * POST /api/auth/hospital-admin/register
@@ -94,6 +95,13 @@ export async function registerHospitalAdmin(
       );
     }
 
+    setAuthCookies(
+      res,
+      sessionData.session.access_token,
+      sessionData.session.refresh_token,
+      sessionData.session.expires_at
+    );
+
     sendSuccess(
       res,
       {
@@ -111,11 +119,6 @@ export async function registerHospitalAdmin(
           city: hospital.city,
           state: hospital.state,
           is_approved: hospital.is_approved,
-        },
-        session: {
-          access_token: sessionData.session.access_token,
-          refresh_token: sessionData.session.refresh_token,
-          expires_at: sessionData.session.expires_at,
         },
       },
       'Hospital admin registered successfully. Your hospital is pending approval.',

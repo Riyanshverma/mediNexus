@@ -1,43 +1,37 @@
-const KEYS = {
-  ACCESS: 'mdn_access_token',
-  REFRESH: 'mdn_refresh_token',
-  EXPIRES_AT: 'mdn_expires_at',
-} as const;
+/**
+ * Token storage — stubbed out after migration to httpOnly cookies.
+ *
+ * All token management is now handled server-side via Set-Cookie headers.
+ * These stubs exist only to avoid breaking any lingering import sites during
+ * the transition; they do nothing.
+ */
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function saveTokens(
-  access_token: string,
-  refresh_token: string,
-  expires_at?: number | null,
+  _access_token: string,
+  _refresh_token: string,
+  _expires_at?: number | null,
 ): void {
-  localStorage.setItem(KEYS.ACCESS, access_token);
-  localStorage.setItem(KEYS.REFRESH, refresh_token);
-  if (expires_at != null) {
-    localStorage.setItem(KEYS.EXPIRES_AT, String(expires_at));
-  }
+  // no-op: tokens live in httpOnly cookies set by the server
 }
 
 export function getAccessToken(): string | null {
-  return localStorage.getItem(KEYS.ACCESS);
+  return null; // httpOnly cookies are not readable by JS
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem(KEYS.REFRESH);
+  return null; // httpOnly cookies are not readable by JS
 }
 
 export function getExpiresAt(): number | null {
-  const raw = localStorage.getItem(KEYS.EXPIRES_AT);
-  return raw ? Number(raw) : null;
+  return null;
 }
 
-/** Returns true if the stored access token is expired or within 30 s of expiry. */
+/** Always returns false — expiry is enforced server-side. */
 export function isTokenExpired(): boolean {
-  const expiresAt = getExpiresAt();
-  if (!expiresAt) return true;
-  return Date.now() / 1000 >= expiresAt - 30;
+  return false;
 }
 
 export function clearTokens(): void {
-  localStorage.removeItem(KEYS.ACCESS);
-  localStorage.removeItem(KEYS.REFRESH);
-  localStorage.removeItem(KEYS.EXPIRES_AT);
+  // no-op: cookies are cleared server-side on logout
 }

@@ -54,7 +54,7 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
 
   // ── Patient submit ──────────────────────────────────────────────────────────
   const submitPatient = async (data: PatientSignUpType) => {
-    const { data: res } = await authService.registerPatient({
+    await authService.registerPatient({
       email: data.email,
       phone: toE164(data.phone),
       password: data.password,
@@ -63,11 +63,7 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
       blood_group: data.bloodGroup,
     });
 
-    await applySession(
-      res.session.access_token,
-      res.session.refresh_token,
-      res.session.expires_at,
-    );
+    await applySession();
 
     toast.success('Account created! Welcome to mediNexus.');
     navigate(ROLE_DASHBOARD['patient']);
@@ -79,7 +75,7 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
     const addressParts = [data.buildingName, data.street].filter(Boolean);
     const address = addressParts.join(', ');
 
-    const { data: res } = await authService.registerHospitalAdmin({
+    await authService.registerHospitalAdmin({
       email: data.adminEmail,
       password: data.password,
       full_name: `${data.adminFirstName} ${data.adminLastName}`.trim(),
@@ -92,11 +88,7 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
       contact_phone: toE164(data.adminPhone),
     });
 
-    await applySession(
-      res.session.access_token,
-      res.session.refresh_token,
-      res.session.expires_at,
-    );
+    await applySession();
 
     toast.success('Hospital registered! Your account is pending approval.');
     navigate(ROLE_DASHBOARD['hospital_admin']);

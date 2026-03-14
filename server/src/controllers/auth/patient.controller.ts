@@ -3,6 +3,7 @@ import { supabaseAdmin, supabaseAnon } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, ConflictError } from '../../utils/errors.js';
 import type { RegisterPatientBody } from '../../validators/auth/patient.validator.js';
+import { setAuthCookies } from './session.controller.js';
 
 /**
  * POST /api/auth/patient/register
@@ -91,6 +92,13 @@ export async function registerPatient(
       );
     }
 
+    setAuthCookies(
+      res,
+      sessionData.session.access_token,
+      sessionData.session.refresh_token,
+      sessionData.session.expires_at
+    );
+
     sendSuccess(
       res,
       {
@@ -100,11 +108,6 @@ export async function registerPatient(
           phone: user.phone ?? null,
           role: 'patient',
           full_name,
-        },
-        session: {
-          access_token: sessionData.session.access_token,
-          refresh_token: sessionData.session.refresh_token,
-          expires_at: sessionData.session.expires_at,
         },
       },
       'Patient registered successfully',

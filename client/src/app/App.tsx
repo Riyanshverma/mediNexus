@@ -2,6 +2,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import PublicOnlyRoute from '@/components/PublicOnlyRoute';
 import { LandingPage } from '@/features/landing';
 import { LoginPage, SignupPage, DoctorSetupPage } from '@/features/authentication';
 import { PatientDashboard, AdminDashboard, DoctorDashboard } from '@/features/dashboard';
@@ -15,8 +16,22 @@ const App = () => (
         <Routes>
           {/* ── Public routes ───────────────────────────────────────────── */}
           <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<SignupPage />} />
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <LoginPage />
+              </PublicOnlyRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicOnlyRoute>
+                <SignupPage />
+              </PublicOnlyRoute>
+            }
+          />
 
           {/* Doctor invite setup — token arrives in URL hash, no prior auth needed */}
           <Route path="/doctor/setup" element={<DoctorSetupPage />} />

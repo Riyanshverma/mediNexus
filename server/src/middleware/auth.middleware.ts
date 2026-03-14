@@ -6,8 +6,11 @@ import type { UserRole, AppMetadata } from '../types/auth.types.js';
 // ─── JWT authentication ──────────────────────────────────────────────
 
 /**
- * Validates the Bearer token from the Authorization header using
- * Supabase's admin client (getUser introspects the JWT server-side).
+ * Validates the access token, trying sources in priority order:
+ *   1. httpOnly cookie `mdn_access_token` (standard browser sessions)
+ *   2. Authorization: Bearer header (doctor invite setup flow)
+ *
+ * Uses Supabase admin client (getUser introspects the JWT server-side).
  * Attaches the Supabase user to req.user on success.
  */
 export async function authenticate(
@@ -16,13 +19,21 @@ export async function authenticate(
   next: NextFunction
 ): Promise<void> {
   try {
+    // Try cookie first, then Authorization header as fallback
+    const cookieToken = (req.cookies as Record<string, string | undefined>)['mdn_access_token'];
     const authHeader = req.headers['authorization'];
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('Missing or malformed Authorization header');
+    let token: string | undefined;
+
+    if (cookieToken) {
+      token = cookieToken;
+    } else if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
     }
 
-    const token = authHeader.slice(7); // strip "Bearer "
+    if (!token) {
+      throw new UnauthorizedError('Missing or malformed Authorization header');
+    }
 
     const {
       data: { user },

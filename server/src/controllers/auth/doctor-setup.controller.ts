@@ -4,6 +4,7 @@ import { sendSuccess } from '../../utils/response.js';
 import { AppError, ForbiddenError } from '../../utils/errors.js';
 import type { AppMetadata } from '../../types/auth.types.js';
 import type { DoctorSetupBody } from '../../validators/auth/doctor-setup.validator.js';
+import { setAuthCookies } from './session.controller.js';
 
 /**
  * POST /api/auth/doctor/setup
@@ -108,15 +109,12 @@ export async function doctorSetup(
 
     const session = sessionData.session;
 
-    // Return with a `session` key to match what the client's applySession() expects
+    setAuthCookies(res, session.access_token, session.refresh_token, session.expires_at);
+
+    // Return with user info; session tokens are now in httpOnly cookies
     sendSuccess(
       res,
       {
-        session: {
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-          expires_at: session.expires_at,
-        },
         user: {
           id: user.id,
           email: userData.user.email,

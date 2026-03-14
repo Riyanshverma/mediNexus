@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from 'react';
 import { authService, type AuthUser, type UserRole } from '@/services/auth.service';
-import { clearTokens, getAccessToken, saveTokens } from '@/lib/token';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,30 +15,26 @@ interface AuthContextValue {
   /** Convenience boolean — true when user is not null. */
   isAuthenticated: boolean;
   /**
-   * True while the initial session rehydration from localStorage is in
-   * progress.  Consumers should render a loading state until this is false.
+   * True while the initial session rehydration is in progress.
+   * Consumers should render a loading state until this is false.
    */
   isLoading: boolean;
 
   /**
-   * Signs the user in.  Persists the returned tokens to localStorage and
-   * updates the auth state.  Returns the authenticated user so callers can
-   * read the role immediately.
+   * Signs the user in.  The server sets httpOnly auth cookies on success.
+   * Updates auth state and broadcasts the login to other tabs.
+   * Returns the authenticated user so callers can read the role immediately.
    */
   login: (email: string, password: string) => Promise<AuthUser>;
 
-  /** Signs the user out — revokes the server session and clears local state. */
+  /** Signs the user out — revokes the server session, clears cookies, updates state. */
   logout: () => Promise<void>;
 
   /**
-   * Saves an externally obtained session (e.g. after patient / hospital
-   * registration) and fetches the current user profile.
+   * Called after registration flows where the server has already set cookies.
+   * Fetches the current user profile and updates auth state.
    */
-  applySession: (
-    access_token: string,
-    refresh_token: string,
-    expires_at: number,
-  ) => Promise<AuthUser>;
+  applySession: () => Promise<AuthUser>;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -54,40 +49,74 @@ export const ROLE_DASHBOARD: Record<UserRole, string> = {
   doctor: '/doctor/dashboard',
 };
 
+// ─── BroadcastChannel setup ───────────────────────────────────────────────────
+
+type AuthMessage = 'login' | 'logout';
+
+function openChannel(): BroadcastChannel | null {
+  try {
+    return new BroadcastChannel('mdn_auth');
+  } catch {
+    return null;
+  }
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // On mount, try to rehydrate the session from localStorage.
+  /** Fetches the current user from the server (cookie sent automatically). */
+  const fetchUser = async (): Promise<AuthUser | null> => {
+    try {
+      const { data } = await authService.getMe();
+      return data.user;
+    } catch {
+      return null;
+    }
+  };
+
+  // On mount, rehydrate session from the httpOnly cookie (cookie is sent
+  // automatically with credentials:'include'; no token reading needed).
   useEffect(() => {
-    const init = async () => {
-      const token = getAccessToken();
-      if (!token) {
-        setIsLoading(false);
-        return;
-      }
-      try {
-        const { data } = await authService.getMe();
-        setUser(data.user);
-      } catch {
-        // Token is invalid / expired and could not be refreshed.
-        clearTokens();
-      } finally {
-        setIsLoading(false);
+    fetchUser()
+      .then((u) => setUser(u))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  // Cross-tab auth sync via BroadcastChannel
+  useEffect(() => {
+    const channel = openChannel();
+    if (!channel) return;
+
+    channel.onmessage = (event: MessageEvent<AuthMessage>) => {
+      if (event.data === 'login') {
+        fetchUser().then((u) => setUser(u));
+      } else if (event.data === 'logout') {
+        setUser(null);
       }
     };
 
-    init();
+    return () => {
+      channel.close();
+    };
   }, []);
 
   // ── login ──────────────────────────────────────────────────────────────────
 
   const login = async (email: string, password: string): Promise<AuthUser> => {
     const { data } = await authService.login({ email, password });
-    saveTokens(data.session.access_token, data.session.refresh_token, data.session.expires_at);
+    // Server has set httpOnly cookies; just update local state.
     setUser(data.user);
+
+    // Notify other tabs
+    const channel = openChannel();
+    if (channel) {
+      channel.postMessage('login' satisfies AuthMessage);
+      channel.close();
+    }
+
     return data.user;
   };
 
@@ -97,23 +126,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authService.logout();
     } catch {
-      // Ignore server-side errors — still clear local state.
+      // Ignore server errors — still clear local state.
     } finally {
-      clearTokens();
       setUser(null);
+
+      // Notify other tabs
+      const channel = openChannel();
+      if (channel) {
+        channel.postMessage('logout' satisfies AuthMessage);
+        channel.close();
+      }
     }
   };
 
   // ── applySession ───────────────────────────────────────────────────────────
+  // Called after registration: cookies already set by the server, just fetch user.
 
-  const applySession = async (
-    access_token: string,
-    refresh_token: string,
-    expires_at: number,
-  ): Promise<AuthUser> => {
-    saveTokens(access_token, refresh_token, expires_at);
+  const applySession = async (): Promise<AuthUser> => {
     const { data } = await authService.getMe();
     setUser(data.user);
+
+    const channel = openChannel();
+    if (channel) {
+      channel.postMessage('login' satisfies AuthMessage);
+      channel.close();
+    }
+
     return data.user;
   };
 

@@ -1,9 +1,56 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction, CookieOptions } from 'express';
 import { supabaseAdmin, supabaseAnon, createUserClient } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, UnauthorizedError } from '../../utils/errors.js';
 import type { AppMetadata, UserRole } from '../../types/auth.types.js';
-import type { LoginBody, RefreshTokenBody } from '../../validators/auth/login.validator.js';
+import type { LoginBody } from '../../validators/auth/login.validator.js';
+import { env } from '../../config/env.js';
+
+// ─── Cookie helpers ───────────────────────────────────────────────────
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Base cookie options shared by both auth cookies. */
+function baseCookieOptions(): CookieOptions {
+  return {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+  };
+}
+
+/**
+ * Sets both auth cookies on the response.
+ * `expires_at` is a Unix timestamp (seconds); maxAge is derived from it.
+ */
+export function setAuthCookies(
+  res: Response,
+  access_token: string,
+  refresh_token: string,
+  expires_at: number | null | undefined,
+): void {
+  const accessMaxAge =
+    expires_at != null
+      ? Math.max(0, expires_at * 1000 - Date.now())
+      : 60 * 60 * 1000; // fallback: 1 hour
+
+  res.cookie('mdn_access_token', access_token, {
+    ...baseCookieOptions(),
+    maxAge: accessMaxAge,
+  });
+
+  res.cookie('mdn_refresh_token', refresh_token, {
+    ...baseCookieOptions(),
+    maxAge: THIRTY_DAYS_MS,
+  });
+}
+
+/** Clears both auth cookies. */
+export function clearAuthCookies(res: Response): void {
+  res.clearCookie('mdn_access_token', baseCookieOptions());
+  res.clearCookie('mdn_refresh_token', baseCookieOptions());
+}
 
 // ─── Login ───────────────────────────────────────────────────────────
 
@@ -32,6 +79,8 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     const appMeta = user.app_metadata as AppMetadata | undefined;
     const role: UserRole | undefined = appMeta?.role;
 
+    setAuthCookies(res, session.access_token, session.refresh_token, session.expires_at);
+
     sendSuccess(
       res,
       {
@@ -40,11 +89,6 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
           email: user.email ?? null,
           phone: user.phone ?? null,
           role: role ?? null,
-        },
-        session: {
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-          expires_at: session.expires_at,
         },
       },
       'Login successful'
@@ -59,7 +103,8 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 /**
  * POST /api/auth/refresh
  *
- * Exchange a refresh_token for a new access_token + refresh_token pair.
+ * Reads the refresh_token from the httpOnly cookie and exchanges it for
+ * a new access_token + refresh_token pair, then sets new cookies.
  */
 export async function refreshToken(
   req: Request,
@@ -67,25 +112,28 @@ export async function refreshToken(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { refresh_token } = req.body as RefreshTokenBody;
+    const refresh_token =
+      (req.cookies as Record<string, string | undefined>)['mdn_refresh_token'];
+
+    if (!refresh_token) {
+      throw new UnauthorizedError('Missing refresh token');
+    }
 
     const { data, error } = await supabaseAnon.auth.refreshSession({ refresh_token });
 
     if (error || !data.session) {
+      clearAuthCookies(res);
       throw new UnauthorizedError('Invalid or expired refresh token');
     }
 
-    sendSuccess(
+    setAuthCookies(
       res,
-      {
-        session: {
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          expires_at: data.session.expires_at,
-        },
-      },
-      'Token refreshed successfully'
+      data.session.access_token,
+      data.session.refresh_token,
+      data.session.expires_at
     );
+
+    sendSuccess(res, null, 'Token refreshed successfully');
   } catch (err) {
     next(err);
   }
@@ -96,20 +144,19 @@ export async function refreshToken(
 /**
  * POST /api/auth/logout
  *
- * Invalidates the current session (requires valid Bearer token).
+ * Invalidates the current session (reads access token from cookie).
  * Uses a user-scoped client so only the caller's session is revoked.
  */
 export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const token = req.headers['authorization']!.slice(7);
-    const userClient = createUserClient(token);
+    const token = (req.cookies as Record<string, string | undefined>)['mdn_access_token'];
 
-    const { error } = await userClient.auth.signOut();
-
-    if (error) {
-      throw new AppError('Logout failed. Please try again.', 500);
+    if (token) {
+      const userClient = createUserClient(token);
+      await userClient.auth.signOut();
     }
 
+    clearAuthCookies(res);
     sendSuccess(res, null, 'Logged out successfully');
   } catch (err) {
     next(err);
