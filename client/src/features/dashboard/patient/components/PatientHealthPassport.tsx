@@ -1,4 +1,4 @@
-const PatientHealthPassport = () => {
+export const PatientHealthPassport = () => {
   return (
     <div className="p-8 animate-in fade-in duration-500">
       <h1 className="text-3xl font-light tracking-tight mb-6">Health Passport</h1>
@@ -8,5 +8,3 @@ const PatientHealthPassport = () => {
     </div>
   )
 }
-
-export default PatientHealthPassport;

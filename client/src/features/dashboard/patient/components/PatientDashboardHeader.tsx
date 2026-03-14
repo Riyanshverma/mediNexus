@@ -14,7 +14,7 @@ const navigationItems = [
   { name: 'Health Passport', key: 'passport' },
 ];
 
-const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
+export const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -72,5 +72,3 @@ const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
     </header>
   );
 };
-
-export default PatientDashboardHeader;

@@ -16,7 +16,7 @@ const navigationItems = [
 ];
 
 // 2. EXPLICITLY use the form: React.FC<HeaderProps> or map the props directly
-const DoctorDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
+export const DoctorDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -72,5 +72,3 @@ const DoctorDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
     </header>
   );
 };
-
-export default DoctorDashboardHeader;

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments } from '../..';
 
-const PatientDashboard = () => {
+export const PatientDashboard = () => {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState('home');
 
@@ -39,5 +39,3 @@ const PatientDashboard = () => {
     </div>
   );
 };
-
-export default PatientDashboard;

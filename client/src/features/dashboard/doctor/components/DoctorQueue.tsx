@@ -1,4 +1,4 @@
-const DoctorQueue = () => {
+export const DoctorQueue = () => {
   return (
     <div className="p-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between mb-6">
@@ -11,5 +11,3 @@ const DoctorQueue = () => {
     </div>
   )
 }
-
-export default DoctorQueue;

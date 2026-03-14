@@ -1,4 +1,4 @@
-const PatientHome = () => {
+export const PatientHome = () => {
   return (
     <div className="p-8 animate-in fade-in duration-500">
       <h1 className="text-3xl font-light tracking-tight mb-6">Welcome Back</h1>
@@ -12,5 +12,3 @@ const PatientHome = () => {
     </div>
   )
 }
-
-export default PatientHome;
