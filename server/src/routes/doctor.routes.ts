@@ -27,6 +27,13 @@ import {
   getDoctorPrescription,
 } from '../controllers/doctor/prescriptions.controller.js';
 import { getPatientPassportForDoctor } from '../controllers/doctor/passport.controller.js';
+import {
+  createReferral,
+  listReferrals,
+  updateReferralStatus,
+  getAccessibleDocuments,
+  searchDoctors,
+} from '../controllers/doctor/referrals.controller.js';
 
 export const doctorRouter = Router();
 
@@ -65,3 +72,12 @@ doctorRouter.post('/me/appointments/:appointmentId/prescriptions', createPrescri
 
 // ── Patient Health Passport (requires access grant) ──────────────────
 doctorRouter.get('/me/patients/:patientId/passport', getPatientPassportForDoctor);
+doctorRouter.get('/me/patients/:patientId/accessible-documents', getAccessibleDocuments);
+
+// ── Referrals ────────────────────────────────────────────────────────
+doctorRouter.get('/me/referrals', listReferrals);
+doctorRouter.post('/me/referrals', createReferral);
+doctorRouter.patch('/me/referrals/:referralId/status', updateReferralStatus);
+
+// ── Doctor Search (for referrals) ────────────────────────────────────
+doctorRouter.get('/search', searchDoctors);
