@@ -2,6 +2,20 @@ import { api } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface PatientProfile {
+  id: string;
+  user_id: string;
+  full_name: string;
+  phone_number: string;
+  email: string;
+  dob: string;
+  blood_group: string | null;
+  known_allergies: string | null;
+  language_preference: string;
+  no_show_count: number;
+  created_at: string;
+}
+
 export interface PatientAppointment {
   id: string;
   slot_id: string;
@@ -100,6 +114,10 @@ export interface WaitlistEntry {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const patientService = {
+  // Profile
+  getProfile: () =>
+    api.get<{ data: { patient: PatientProfile } }>('/api/patients/me'),
+
   // Appointments
   listAppointments: (filter: 'upcoming' | 'past' | 'all' = 'all') =>
     api.get<{ data: { appointments: PatientAppointment[] } }>(
