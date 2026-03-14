@@ -9,11 +9,12 @@ import { userLogInSchema, type userLogInType } from '@/validations/auth.validati
 import { toast } from 'sonner';
 import { type LoginFormProps } from '@/types';
 import { useNavigate } from 'react-router-dom';
-
+import { useAuth, ROLE_DASHBOARD } from '@/context/AuthContext';
 
 const LoginForm: FunctionComponent<LoginFormProps> = ({ role }) => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const {
     register,
@@ -29,11 +30,22 @@ const LoginForm: FunctionComponent<LoginFormProps> = ({ role }) => {
 
   const onSubmit = async (data: userLogInType) => {
     try {
-      
-      toast.success(`${role.charAt(0).toUpperCase() + role.slice(1)} successfully logged in`);
-      navigate(`/${role}/dashboard`);
-    } catch (error: any) {
-      // toast.error(error.message);
+      const user = await login(data.email, data.password);
+
+      if (!user.role) {
+        toast.error('Your account has no role assigned. Please contact support.');
+        return;
+      }
+
+      toast.success('Successfully logged in');
+
+      // Navigate to the role-specific dashboard returned by the server.
+      // This is safer than trusting the tab the user selected.
+      navigate(ROLE_DASHBOARD[user.role]);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Login failed. Please try again.';
+      toast.error(message);
     }
   };
 
@@ -78,7 +90,7 @@ const LoginForm: FunctionComponent<LoginFormProps> = ({ role }) => {
         </div>
 
         <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
-          {isSubmitting ? 'Processing...' : 'Log in'}
+          {isSubmitting ? 'Signing in...' : 'Log in'}
         </Button>
       </form>
     </div>

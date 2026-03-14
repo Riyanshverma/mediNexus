@@ -1,58 +1,79 @@
 import { z } from 'zod';
 
-const email = z.string().trim().toLowerCase().email("Invalid email address");
-const password = z.string().trim().min(6, "Password must be at least 6 characters long").regex(/^(?=.*[A-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9]).*$/, "Password must contain at least an uppercase letter, a number, and a special character");
-const phone = z.string().regex(/^\d{10}$/, "Phone number must be exactly 10 digits");
-const firstName = z.string().min(2, "First name is required");
-const lastName = z.string().min(2, "Last name is required");
+const email = z.string().trim().toLowerCase().email('Invalid email address');
+const password = z
+  .string()
+  .trim()
+  .min(8, 'Password must be at least 8 characters long')
+  .regex(
+    /^(?=.*[A-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9]).*$/,
+    'Password must contain at least an uppercase letter, a number, and a special character',
+  );
+const phone = z.string().regex(/^\d{10}$/, 'Phone number must be exactly 10 digits');
+const firstName = z.string().min(2, 'First name is required');
+const lastName = z.string().min(2, 'Last name is required');
+
+// ─── Login ────────────────────────────────────────────────────────────────────
 
 export const userLogInSchema = z.strictObject({
   email: email,
-  password: password,
+  password: z.string().min(1, 'Password is required'),
 });
 export type userLogInType = z.infer<typeof userLogInSchema>;
 
+// ─── Patient signup ───────────────────────────────────────────────────────────
 
-export const patientSignUpSchema = z.object({
-  firstName: firstName,
-  lastName: lastName,
-  email: email,
-  password: password, // use your existing password definition
-  confirmPassword: password,
-  phone: phone,
-  dob: z.date("A date of birth is required."),
-  bloodGroup: z.string().min(1, "Blood group is required"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
+export const patientSignUpSchema = z
+  .object({
+    firstName: firstName,
+    lastName: lastName,
+    email: email,
+    password: password,
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+    phone: phone,
+    dob: z.date({ required_error: 'A date of birth is required.' }),
+    bloodGroup: z.string().min(1, 'Blood group is required'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
 export type PatientSignUpType = z.infer<typeof patientSignUpSchema>;
 
+// ─── Hospital / clinic signup ─────────────────────────────────────────────────
 
-export const hospitalSignUpSchema = z.object({
-  // Hospital Details
-  hospitalName: z.string().min(2, "Hospital name is required"),
-  hospitalType: z.enum(["clinic", "hospital", "solo_practitioner", "diagnostic_center", "pharmacy"], {
-  message: "Please select a type",
-}),
-  registrationNumber: z.string().min(2, "Registration number is required"),
-  address: z.string().min(1, "Address is required"),
-  street: z.string().min(1, "Street is required"),
-  city: z.string().min(1, "City is required"),
-  state: z.string().min(1, "State is required"),
-  pincode: z.string().regex(/^\d{6}$/, "Invalid pincode"),
+/**
+ * Hospital types accepted by the server.
+ * Keep in sync with server/src/validators/auth/hospital-admin.validator.ts
+ */
+export const HOSPITAL_TYPES = ['government', 'private', 'clinic', 'nursing_home'] as const;
+export type HospitalType = (typeof HOSPITAL_TYPES)[number];
 
-  // Admin Operator Details
-  adminFirstName: firstName,
-  adminLastName: lastName,
-  adminEmail: email,
-  adminPhone: phone,
-  password: password,
-  confirmPassword: password,
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
+export const hospitalSignUpSchema = z
+  .object({
+    // ── Hospital details ─────────────────────────────────────────────────────
+    hospitalName: z.string().min(2, 'Hospital name is required'),
+    hospitalType: z.enum(HOSPITAL_TYPES, { message: 'Please select a valid type' }),
+    registrationNumber: z.string().min(2, 'Registration number is required'),
+    /** Building / block — optional part of the address */
+    buildingName: z.string().optional(),
+    street: z.string().min(1, 'Street / Area is required'),
+    city: z.string().min(1, 'City is required'),
+    state: z.string().min(1, 'State is required'),
+    pincode: z.string().regex(/^\d{6}$/, 'Invalid pincode'),
+
+    // ── Admin / operator details ─────────────────────────────────────────────
+    adminFirstName: firstName,
+    adminLastName: lastName,
+    adminEmail: email,
+    adminPhone: phone,
+    password: password,
+    confirmPassword: z.string().min(1, 'Please confirm your password'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
 export type HospitalSignUpType = z.infer<typeof hospitalSignUpSchema>;
 
 
