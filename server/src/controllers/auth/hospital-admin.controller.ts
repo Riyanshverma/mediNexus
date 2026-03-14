@@ -9,7 +9,7 @@ import type { RegisterHospitalAdminBody } from '../../validators/auth/hospital-a
  *
  * Flow:
  *  1. Create Supabase auth user with app_metadata.role = 'hospital_admin'
- *  2. Insert hospital profile row (is_approved defaults to false — requires manual approval)
+ *  2. Insert hospital profile row (is_approved = true — auto-approved on signup)
  *  3. Sign in immediately and return a live session
  *
  * Rollback: if step 2 fails, the orphaned auth user is deleted.
@@ -69,7 +69,7 @@ export async function registerHospitalAdmin(
         state,
         registration_number,
         admin_id: user.id,
-        is_approved: false,
+        is_approved: true,
       })
       .select('id, name, type, city, state, is_approved')
       .single();

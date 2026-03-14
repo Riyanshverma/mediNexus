@@ -4,6 +4,7 @@ import { sendSuccess } from '../../utils/response.js';
 import { AppError, NotFoundError, BadRequestError } from '../../utils/errors.js';
 import { requirePatient } from '../../utils/lookup.js';
 import type { AppointmentStatus } from '../../models/database.types.js';
+import { notifyAllWaiting } from '../../jobs/waitlistQueue.js';
 
 // ─── Local join-result shapes ────────────────────────────────────────
 // Supabase Relationships are empty so we cast manually.
@@ -87,7 +88,10 @@ export async function listPatientAppointments(
     const filtered =
       filter === 'upcoming'
         ? appointments.filter(
-            (a) => a.appointment_slots && a.appointment_slots.slot_start > now
+            (a) =>
+              a.appointment_slots &&
+              a.appointment_slots.slot_start > now &&
+              ['booked', 'checked_in', 'in_progress'].includes(a.status)
           )
         : filter === 'past'
         ? appointments.filter(
@@ -184,6 +188,24 @@ export async function cancelPatientAppointment(
     if (updateError || !updated) {
       console.error('[cancelPatientAppointment] update failed:', updateError?.message);
       throw new AppError('Failed to cancel appointment', 500);
+    }
+
+    // Free the slot back to available
+    const { data: apptFull } = await supabaseAdmin
+      .from('appointments')
+      .select('slot_id')
+      .eq('id', id)
+      .single();
+
+    if (apptFull?.slot_id) {
+      await supabaseAdmin
+        .from('appointment_slots')
+        .update({ status: 'available', locked_by: null, locked_until: null })
+        .eq('id', apptFull.slot_id)
+        .eq('status', 'booked');
+
+      // Notify ALL waiting patients — first to accept wins the slot
+      await notifyAllWaiting(apptFull.slot_id);
     }
 
     sendSuccess(res, { appointment: updated }, 'Appointment cancelled');

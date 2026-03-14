@@ -1,6 +1,6 @@
 // ─── Enums ──────────────────────────────────────────────────────────
 
-export type SlotStatus = 'available' | 'booked' | 'locked' | 'cancelled';
+export type SlotStatus = 'available' | 'booked' | 'locked' | 'cancelled' | 'blocked';
 
 export type AppointmentStatus =
   | 'booked'
@@ -12,7 +12,7 @@ export type AppointmentStatus =
 
 export type BookingType = 'online' | 'walk_in' | 'referral';
 
-export type WaitlistStatus = 'waiting' | 'notified' | 'accepted' | 'expired' | 'cancelled';
+export type WaitlistStatus = 'waiting' | 'notified' | 'offered' | 'accepted' | 'expired' | 'cancelled';
 
 export type ReportType = 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
 
@@ -31,6 +31,7 @@ export interface Hospital {
   admin_id: string;
   is_approved: boolean;
   created_at: string;
+  search_vector: unknown; // tsvector — opaque on the client
 }
 
 export interface HospitalService {
@@ -43,6 +44,7 @@ export interface HospitalService {
   fee: number;
   pay_at_counter: boolean;
   is_available: boolean;
+  search_vector: unknown; // tsvector — opaque on the client
 }
 
 export interface Doctor {
@@ -52,8 +54,18 @@ export interface Doctor {
   full_name: string;
   specialisation: string;
   prescription_template: string | null;
+  qualifications: string | null;
+  registration_number: string | null;
+  experience_years: number | null;
+  consultation_fee: number | null;
+  department: string | null;
+  bio: string | null;
+  available_from: string | null;
+  available_to: string | null;
+  slot_duration_mins: number | null;
   verified: boolean;
   created_at: string;
+  search_vector: unknown; // tsvector — opaque on the client
 }
 
 export interface Patient {
@@ -86,7 +98,7 @@ export interface Appointment {
   patient_id: string;
   doctor_id: string;
   hospital_id: string;
-  service_id: string;
+  service_id: string | null;
   booking_type: BookingType;
   status: AppointmentStatus;
   notes: string | null;
@@ -197,6 +209,7 @@ export type Database = {
           admin_id: string;
           is_approved: boolean;
           created_at: string;
+          search_vector: unknown;
         };
         Insert: {
           id?: string;
@@ -235,6 +248,7 @@ export type Database = {
           fee: number;
           pay_at_counter: boolean;
           is_available: boolean;
+          search_vector: unknown;
         };
         Insert: {
           id?: string;
@@ -268,8 +282,18 @@ export type Database = {
           full_name: string;
           specialisation: string;
           prescription_template: string | null;
+          qualifications: string | null;
+          registration_number: string | null;
+          experience_years: number | null;
+          consultation_fee: number | null;
+          department: string | null;
+          bio: string | null;
+          available_from: string | null;
+          available_to: string | null;
+          slot_duration_mins: number | null;
           verified: boolean;
           created_at: string;
+          search_vector: unknown;
         };
         Insert: {
           id?: string;
@@ -278,6 +302,15 @@ export type Database = {
           full_name: string;
           specialisation: string;
           prescription_template?: string | null;
+          qualifications?: string | null;
+          registration_number?: string | null;
+          experience_years?: number | null;
+          consultation_fee?: number | null;
+          department?: string | null;
+          bio?: string | null;
+          available_from?: string | null;
+          available_to?: string | null;
+          slot_duration_mins?: number | null;
           verified?: boolean | null;
           created_at?: string | null;
         };
@@ -288,6 +321,15 @@ export type Database = {
           full_name?: string;
           specialisation?: string;
           prescription_template?: string | null;
+          qualifications?: string | null;
+          registration_number?: string | null;
+          experience_years?: number | null;
+          consultation_fee?: number | null;
+          department?: string | null;
+          bio?: string | null;
+          available_from?: string | null;
+          available_to?: string | null;
+          slot_duration_mins?: number | null;
           verified?: boolean | null;
           created_at?: string | null;
         };
@@ -372,7 +414,7 @@ export type Database = {
           patient_id: string;
           doctor_id: string;
           hospital_id: string;
-          service_id: string;
+          service_id: string | null;
           booking_type: BookingType;
           status: AppointmentStatus;
           notes: string | null;
@@ -384,7 +426,7 @@ export type Database = {
           patient_id: string;
           doctor_id: string;
           hospital_id: string;
-          service_id: string;
+          service_id?: string | null;
           booking_type: BookingType;
           status: AppointmentStatus;
           notes?: string | null;
@@ -650,7 +692,24 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      search_hospitals: {
+        Args: {
+          search_query?: string | null;
+          filter_city?: string | null;
+          filter_speciality?: string | null;
+          result_limit?: number;
+        };
+        Returns: {
+          id: string;
+          name: string;
+          type: string;
+          address: string;
+          city: string;
+          state: string;
+          is_approved: boolean;
+          rank: number;
+        }[];
+      };
     };
     Enums: {
       slot_status: SlotStatus;

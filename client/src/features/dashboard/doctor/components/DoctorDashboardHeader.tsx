@@ -2,6 +2,7 @@ import { IconHeartbeat } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { LogOut, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 
 // 1. Define the props interface
 interface HeaderProps {
@@ -15,12 +16,12 @@ const navigationItems = [
   { name: 'Prescriptions', key: 'prescriptions' },
 ];
 
-// 2. EXPLICITLY use the form: React.FC<HeaderProps> or map the props directly
 export const DoctorDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const handleLogout = async () => {
-    // Add your auth logout logic here
+    await logout();
     navigate('/login');
   };
 

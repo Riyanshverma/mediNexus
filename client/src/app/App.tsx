@@ -6,6 +6,7 @@ import { LandingPage } from '@/features/landing';
 import { LoginPage, SignupPage, DoctorSetupPage } from '@/features/authentication';
 import { PatientDashboard, AdminDashboard, DoctorDashboard } from '@/features/dashboard';
 import { DoctorOnBoardPage } from '@/features/doctor-onboard';
+import PatientDiscover from '@/features/discover/PatientDiscover';
 
 const App = () => (
   <Router>
@@ -24,10 +25,10 @@ const App = () => (
           <Route
             path="/patient/*"
             element={
-              <ProtectedRoute allowedRole="patient">
+          <ProtectedRoute allowedRole="patient">
                 <Routes>
                   <Route path="dashboard" element={<PatientDashboard />} />
-                  {/* Add more patient-specific routes here */}
+                  <Route path="discover" element={<PatientDiscover />} />
                 </Routes>
               </ProtectedRoute>
             }

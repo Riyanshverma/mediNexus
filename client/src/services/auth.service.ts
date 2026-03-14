@@ -51,8 +51,22 @@ export interface RegisterHospitalAdminPayload {
 }
 
 export interface DoctorSetupPayload {
+  // Auth
   password: string;
-  full_name?: string;
+  // Identity
+  full_name: string;
+  // Professional
+  specialisation: string;
+  department: string;
+  qualifications: string;
+  registration_number: string;
+  experience_years: number;
+  consultation_fee: number;
+  bio?: string;
+  // Scheduling
+  available_from: string;
+  available_to: string;
+  slot_duration_mins: number;
 }
 
 // ─── Response envelope types ──────────────────────────────────────────────────

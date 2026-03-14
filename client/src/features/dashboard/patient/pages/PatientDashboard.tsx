@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments } from '../..';
+import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments, WaitlistPanel } from '../..';
 
 export const PatientDashboard = () => {
   const location = useLocation();
@@ -18,13 +18,15 @@ export const PatientDashboard = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
-        return <PatientHome />;
+        return <PatientHome setActiveTab={setActiveTab} />;
       case 'appointments':
-        return <PatientAppointments />;
+        return <PatientAppointments setActiveTab={setActiveTab} />;
+      case 'waitlist':
+        return <WaitlistPanel />;
       case 'passport':
         return <PatientHealthPassport />;
       default:
-        return <PatientHome />;
+        return <PatientHome setActiveTab={setActiveTab} />;
     }
   };
 

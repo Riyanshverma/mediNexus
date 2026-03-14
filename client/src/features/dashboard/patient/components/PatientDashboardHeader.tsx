@@ -2,6 +2,7 @@ import { IconHeartbeat } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { LogOut, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 
 interface HeaderProps {
   activeTab: string;
@@ -11,15 +12,16 @@ interface HeaderProps {
 const navigationItems = [
   { name: 'Dashboard', key: 'home' },
   { name: 'Appointments', key: 'appointments' },
+  { name: 'Waitlist', key: 'waitlist' },
   { name: 'Health Passport', key: 'passport' },
 ];
 
 export const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const handleLogout = async () => {
-    // Add your auth logout logic here (e.g., Supabase logout, clear Redux/Zustand store)
-    // toast.success("Logged out successfully");
+    await logout();
     navigate('/login');
   };
 
