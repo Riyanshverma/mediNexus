@@ -15,6 +15,7 @@ const navigationItems = [
   { name: 'Services', key: 'services' },
   { name: 'Service Slots', key: 'service-slots', icon: <IconCalendarTime className="h-4 w-4 mr-1.5" /> },
   { name: 'Appointments', key: 'appointments' },
+  { name: 'Reports', key: 'reports' },
 ];
 
 export const AdminDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {

@@ -159,7 +159,7 @@ export async function createAccessGrant(
           .select('id')
           .eq('id', doc.document_id)
           .eq('patient_id', patient.id)
-          .single();
+          .maybeSingle();
         if (!rx) throw new BadRequestError(`Prescription ${doc.document_id} not found or does not belong to you`);
       } else if (doc.document_type === 'report') {
         const { data: rpt } = await supabaseAdmin
@@ -167,7 +167,7 @@ export async function createAccessGrant(
           .select('id')
           .eq('id', doc.document_id)
           .eq('patient_id', patient.id)
-          .single();
+          .maybeSingle();
         if (!rpt) throw new BadRequestError(`Report ${doc.document_id} not found or does not belong to you`);
       } else {
         throw new BadRequestError(`Invalid document_type: ${doc.document_type}`);

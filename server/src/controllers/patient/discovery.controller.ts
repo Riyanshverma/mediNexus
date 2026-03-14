@@ -222,3 +222,38 @@ export async function getDoctorSlots(
     next(err);
   }
 }
+
+/**
+ * GET /api/discover/doctors/search?q=<query>
+ * Public doctor search — used by patients when granting access manually.
+ * Returns doctors matching the query by name or specialisation.
+ */
+export async function searchDoctorsPublic(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const q = (req.query['q'] as string ?? '').trim();
+    if (q.length < 2) {
+      sendSuccess(res, { doctors: [] }, 'Query too short');
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('doctors')
+      .select('id, full_name, specialisation, hospital_id, hospitals ( name, city )')
+      .or(`full_name.ilike.%${q}%,specialisation.ilike.%${q}%`)
+      .eq('verified', true)
+      .limit(20);
+
+    if (error) {
+      console.error('[searchDoctorsPublic] query failed:', error.message);
+      throw new AppError('Failed to search doctors', 500);
+    }
+
+    sendSuccess(res, { doctors: data ?? [] }, 'Doctors found');
+  } catch (err) {
+    next(err);
+  }
+}

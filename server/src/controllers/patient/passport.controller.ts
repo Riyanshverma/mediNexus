@@ -50,13 +50,15 @@ export async function getPatientPassport(
         )
         .eq('patient_id', patient.id)
         .order('created_at', { ascending: false }),
-      supabaseAdmin
-        .from('referrals')
-        .select(
-          `id, referring_doctor_id, referred_to_doctor_id, reason, status, created_at, updated_at`
-        )
-        .eq('patient_id', patient.id)
-        .order('created_at', { ascending: false }),
+      Promise.resolve(
+        supabaseAdmin
+          .from('referrals')
+          .select(
+            `id, referring_doctor_id, referred_to_doctor_id, reason, status, created_at, updated_at`
+          )
+          .eq('patient_id', patient.id)
+          .order('created_at', { ascending: false })
+      ).catch(() => ({ data: [], error: null })), // graceful: referrals table may not exist yet
     ]);
 
     if (prescriptionsResult.error) {

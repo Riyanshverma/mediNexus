@@ -12,15 +12,21 @@ import { listHospitalDoctors, updateHospitalDoctor, deleteHospitalDoctor } from 
 import { listHospitalServices, createHospitalService, updateHospitalService, deleteHospitalService } from '../controllers/hospital/services.controller.js';
 import { listHospitalAppointments } from '../controllers/hospital/appointments.controller.js';
 import { generateHospitalDoctorSlots } from '../controllers/hospital/slots.controller.js';
-import { 
-  generateServiceSlots, 
-  listServiceSlots, 
-  getServiceSlotDetails, 
+import {
+  generateServiceSlots,
+  listServiceSlots,
+  getServiceSlotDetails,
   deleteServiceSlot,
   bulkDeleteServiceSlots,
   getServiceSlotAvailability,
   updateServiceDaySlots,
 } from '../controllers/hospital/serviceSlots.controller.js';
+import {
+  uploadReportMiddleware,
+  uploadPatientReport,
+  searchHospitalPatients,
+  listPatientReportsForAdmin,
+} from '../controllers/patient/uploadReport.controller.js';
 
 export const hospitalRouter = Router();
 
@@ -65,3 +71,12 @@ hospitalRouter.get('/me/services/:serviceId/availability', getServiceSlotAvailab
 
 // Appointments
 hospitalRouter.get('/me/appointments', listHospitalAppointments);
+
+// Patient reports — hospital staff upload on behalf of a patient
+hospitalRouter.get('/me/patients/search', searchHospitalPatients);
+hospitalRouter.get('/me/patients/:patientId/reports', listPatientReportsForAdmin);
+hospitalRouter.post(
+  '/me/patients/:patientId/reports',
+  uploadReportMiddleware,
+  uploadPatientReport
+);

@@ -84,6 +84,9 @@ const PatientDiscover = () => {
   const [booking, setBooking] = useState(false);
   const [bookedAppt, setBookedAppt] = useState<any>(null);
 
+  // Ref to always track the current locked slot for cleanup on unmount
+  const selectedSlotRef = useRef<Slot | null>(null);
+
   // Waitlist — track which slot IDs the patient just joined so the button updates immediately
   const [waitlistedSlotIds, setWaitlistedSlotIds] = useState<Set<string>>(new Set());
 
@@ -93,6 +96,20 @@ const PatientDiscover = () => {
   const [selectedDocuments, setSelectedDocuments] = useState<DocumentSelection[]>([]);
   const [grantsLoading, setGrantsLoading] = useState(false);
   const [grantsSaving, setGrantsSaving] = useState(false);
+
+  // ── Release slot lock on component unmount (user navigates away) ──
+  useEffect(() => {
+    return () => {
+      if (selectedSlotRef.current) {
+        patientService.releaseSlotLock(selectedSlotRef.current.id).catch(() => {});
+      }
+    };
+  }, []);
+
+  // Keep ref in sync with state so the unmount cleanup always sees the latest value
+  useEffect(() => {
+    selectedSlotRef.current = selectedSlot;
+  }, [selectedSlot]);
 
   // ── Handle incoming waitlist-accepted slot (from PatientDashboard) ──
   // When a patient accepts a waitlist offer they are navigated here with
@@ -408,6 +425,9 @@ const PatientDiscover = () => {
   };
 
   const resetToSearch = () => {
+    if (selectedSlot) {
+      patientService.releaseSlotLock(selectedSlot.id).catch(() => {});
+    }
     setStep('search');
     setSelectedHospital(null);
     setHospitalDetail(null);
@@ -439,7 +459,16 @@ const PatientDiscover = () => {
                   if (step === 'done') { resetToSearch(); return; }
                   if (step === 'grant-access') { /* can't go back — booking already confirmed */ setStep('done'); return; }
                   if (step === 'confirm') { setStep('slots'); return; }
-                  if (step === 'slots') { setStep('hospital'); return; }
+                  if (step === 'slots') {
+                    // Release any locked slot before leaving the slots view
+                    if (selectedSlot) {
+                      patientService.releaseSlotLock(selectedSlot.id).catch(() => {});
+                      setSelectedSlot(null);
+                      setLockedUntil(null);
+                    }
+                    setStep('hospital');
+                    return;
+                  }
                   if (step === 'hospital') { setStep('search'); return; }
                 }}
               >
