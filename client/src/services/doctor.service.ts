@@ -9,6 +9,15 @@ export interface DoctorProfile {
   full_name: string;
   specialisation: string;
   prescription_template: string | null;
+  qualifications: string | null;
+  registration_number: string | null;
+  experience_years: number | null;
+  consultation_fee: number | null;
+  department: string | null;
+  bio: string | null;
+  available_from: string | null;
+  available_to: string | null;
+  slot_duration_mins: number | null;
   verified: boolean;
   created_at: string;
 }

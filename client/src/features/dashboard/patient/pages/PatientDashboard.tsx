@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments, WaitlistPanel } from '../..';
+import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments, WaitlistPanel, PatientProfilePage } from '../..';
 import { useWaitlistStream, type WaitlistUpdatePayload } from '@/hooks/useWaitlistStream';
 
 export const PatientDashboard = () => {
@@ -48,6 +48,8 @@ export const PatientDashboard = () => {
         return <WaitlistPanel onOfferAccepted={handleOfferAccepted} />;
       case 'passport':
         return <PatientHealthPassport />;
+      case 'profile':
+        return <PatientProfilePage />;
       default:
         return <PatientHome setActiveTab={setActiveTab} />;
     }

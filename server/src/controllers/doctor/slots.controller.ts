@@ -32,6 +32,46 @@ export async function listDoctorSlots(
     const doctor = await requireDoctor(userId);
     const upcoming = (req.query['upcoming'] as string) !== 'false';
 
+    // ── Reconciliation: fix orphaned 'booked' slots ───────────────────────
+    // A slot can get stuck as 'booked' if its appointment was cancelled or
+    // completed without the slot being freed (e.g. pre-fix data, edge cases).
+    // Find all 'booked' slots for this doctor that have NO active appointment
+    // (active = booked | checked_in | in_progress) and reset them to 'available'.
+    const { data: bookedSlots } = await supabaseAdmin
+      .from('appointment_slots')
+      .select('id')
+      .eq('doctor_id', doctor.id)
+      .eq('status', 'booked');
+
+    if (bookedSlots && bookedSlots.length > 0) {
+      const bookedSlotIds = bookedSlots.map((s) => s.id);
+
+      // Find which of those slots have an active appointment
+      const { data: activeAppointments } = await supabaseAdmin
+        .from('appointments')
+        .select('slot_id')
+        .in('slot_id', bookedSlotIds)
+        .in('status', ['booked', 'checked_in', 'in_progress']);
+
+      const activeSlotIds = new Set(
+        (activeAppointments ?? []).map((a) => a.slot_id as string)
+      );
+
+      // Slots that are marked 'booked' but have no active appointment are orphaned
+      const orphanedSlotIds = bookedSlotIds.filter((id) => !activeSlotIds.has(id));
+
+      if (orphanedSlotIds.length > 0) {
+        console.log(
+          `[listDoctorSlots] Reconciling ${orphanedSlotIds.length} orphaned booked slot(s) → available`
+        );
+        await supabaseAdmin
+          .from('appointment_slots')
+          .update({ status: 'available', locked_by: null, locked_until: null })
+          .in('id', orphanedSlotIds);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     let query = supabaseAdmin
       .from('appointment_slots')
       .select('*')

@@ -5,6 +5,7 @@ import { AppError, NotFoundError, BadRequestError } from '../../utils/errors.js'
 import { requireDoctor } from '../../utils/lookup.js';
 import type { AppointmentStatus } from '../../models/database.types.js';
 import type { UpdateAppointmentStatusBody } from '../../validators/doctor/appointment-status.validator.js';
+import { notifyNextWaiting } from '../../jobs/waitlistQueue.js';
 
 type AppointmentFilter = 'upcoming' | 'past' | 'all';
 
@@ -146,7 +147,7 @@ export async function updateDoctorAppointmentStatus(
     // Fetch current appointment
     const { data: existing, error: fetchError } = await supabaseAdmin
       .from('appointments')
-      .select('id, status, doctor_id')
+      .select('id, status, doctor_id, slot_id')
       .eq('id', id)
       .eq('doctor_id', doctor.id)
       .single();
@@ -187,6 +188,24 @@ export async function updateDoctorAppointmentStatus(
     if (logError) {
       // Non-fatal: log but don't fail the request
       console.error('[updateDoctorAppointmentStatus] status log insert failed:', logError.message);
+    }
+
+    // Free the slot back to 'available' when the appointment ends (any terminal
+    // or non-occupying status).  This keeps appointment_slots in sync with the
+    // appointment row so the Schedule page never shows a slot as 'booked' when
+    // the appointment has been cancelled, completed, or marked no_show.
+    const slotFreedStatuses: AppointmentStatus[] = ['cancelled', 'completed', 'no_show'];
+    if (slotFreedStatuses.includes(status) && existing.slot_id) {
+      await supabaseAdmin
+        .from('appointment_slots')
+        .update({ status: 'available', locked_by: null, locked_until: null })
+        .eq('id', existing.slot_id)
+        .eq('status', 'booked');
+
+      // If cancelled, also promote the next waiting patient (FIFO).
+      if (status === 'cancelled') {
+        await notifyNextWaiting(existing.slot_id);
+      }
     }
 
     // If marking as no_show, increment patient's no_show_count
