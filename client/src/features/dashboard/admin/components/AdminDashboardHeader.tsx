@@ -1,4 +1,4 @@
-import { IconHeartbeat } from "@tabler/icons-react";
+import { IconHeartbeat, IconCalendarTime } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { LogOut, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -13,6 +13,7 @@ const navigationItems = [
   { name: 'Overview', key: 'overview' },
   { name: 'Doctors', key: 'doctors' },
   { name: 'Services', key: 'services' },
+  { name: 'Service Slots', key: 'service-slots', icon: <IconCalendarTime className="h-4 w-4 mr-1.5" /> },
   { name: 'Appointments', key: 'appointments' },
 ];
 
@@ -41,18 +42,19 @@ export const AdminDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) =
         </div>
 
         {/* Nav */}
-        <nav className="hidden md:flex flex-1 items-center justify-center gap-2">
+        <nav className="hidden md:flex flex-1 items-center justify-center gap-1">
           {navigationItems.map((item) => (
             <Button
               key={item.key}
               variant={activeTab === item.key ? "secondary" : "ghost"}
-              className={`text-md font-normal transition-colors ${
+              className={`text-sm font-medium transition-colors ${
                 activeTab === item.key
                   ? "bg-secondary text-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setActiveTab(item.key)}
             >
+              {item.icon}
               {item.name}
             </Button>
           ))}

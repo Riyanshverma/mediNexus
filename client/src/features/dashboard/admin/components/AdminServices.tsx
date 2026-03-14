@@ -29,6 +29,7 @@ const emptyForm = {
   service_name: '',
   department: '',
   default_duration_mins: 15,
+  daily_slot_limit: 10,
   fee: 0,
   pay_at_counter: false,
   is_available: true,
@@ -65,6 +66,7 @@ export const AdminServices = () => {
       service_name: svc.service_name,
       department: svc.department,
       default_duration_mins: svc.default_duration_mins,
+      daily_slot_limit: svc.daily_slot_limit || 10,
       fee: svc.fee,
       pay_at_counter: svc.pay_at_counter,
       is_available: svc.is_available,
@@ -156,7 +158,7 @@ export const AdminServices = () => {
                 </div>
                 <p className="text-sm text-muted-foreground">{svc.department} · {svc.service_type}</p>
                 <p className="text-xs text-muted-foreground">
-                  ₹{svc.fee} · {svc.default_duration_mins} min
+                  ₹{svc.fee} · {svc.default_duration_mins} min · {svc.daily_slot_limit || 10} slots/day
                   {svc.pay_at_counter ? ' · Pay at counter' : ''}
                 </p>
               </div>
@@ -216,6 +218,16 @@ export const AdminServices = () => {
                 min={5}
                 value={form.default_duration_mins}
                 onChange={e => setForm(f => ({ ...f, default_duration_mins: parseInt(e.target.value) || 15 }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Daily Slot Limit</Label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                value={form.daily_slot_limit}
+                onChange={e => setForm(f => ({ ...f, daily_slot_limit: parseInt(e.target.value) || 10 }))}
               />
             </div>
             <div className="space-y-1.5">

@@ -99,7 +99,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       const retryJson = await retryRes.json().catch(() => null);
 
       if (!retryRes.ok) {
-        const message: string = retryJson?.message ?? `Request failed (${retryRes.status})`;
+        const message: string = retryJson?.message ?? retryJson?.error ?? `Request failed (${retryRes.status})`;
         throw new Error(message);
       }
 
@@ -121,7 +121,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const json = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const message: string = json?.message ?? `Request failed (${res.status})`;
+    const message: string = json?.message ?? json?.error ?? `Request failed (${res.status})`;
     throw new Error(message);
   }
 

@@ -48,7 +48,32 @@ export interface HospitalService {
   fee: number;
   pay_at_counter: boolean;
   is_available: boolean;
+  daily_slot_limit: number;
   search_vector: unknown; // tsvector — opaque on the client
+}
+
+export interface ServiceSlot {
+  id: string;
+  service_id: string;
+  slot_date: string;
+  slot_number: number;
+  status: SlotStatus;
+  locked_by: string | null;
+  locked_until: string | null;
+  created_at: string;
+}
+
+export interface ServiceAppointment {
+  id: string;
+  slot_id: string;
+  patient_id: string;
+  hospital_id: string;
+  service_id: string;
+  booking_type: BookingType;
+  status: AppointmentStatus;
+  notes: string | null;
+  booked_at: string;
+  created_at: string;
 }
 
 export interface Doctor {
@@ -266,6 +291,7 @@ export type Database = {
           fee: number;
           pay_at_counter: boolean;
           is_available: boolean;
+          daily_slot_limit: number;
           search_vector: unknown;
         };
         Insert: {
@@ -278,6 +304,7 @@ export type Database = {
           fee: number;
           pay_at_counter?: boolean;
           is_available?: boolean;
+          daily_slot_limit?: number;
         };
         Update: {
           id?: string;
@@ -289,6 +316,7 @@ export type Database = {
           fee?: number;
           pay_at_counter?: boolean;
           is_available?: boolean;
+          daily_slot_limit?: number;
         };
         Relationships: [];
       };
@@ -425,6 +453,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      service_slots: {
+        Row: {
+          id: string;
+          service_id: string;
+          slot_date: string;
+          slot_number: number;
+          status: SlotStatus;
+          locked_by: string | null;
+          locked_until: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          service_id: string;
+          slot_date: string;
+          slot_number: number;
+          status?: SlotStatus;
+          locked_by?: string | null;
+          locked_until?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          service_id?: string;
+          slot_date?: string;
+          slot_number?: number;
+          status?: SlotStatus;
+          locked_by?: string | null;
+          locked_until?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       appointments: {
         Row: {
           id: string;
@@ -461,6 +522,45 @@ export type Database = {
           status?: AppointmentStatus;
           notes?: string | null;
           created_at?: string | null;
+        };
+        Relationships: [];
+      };
+      service_appointments: {
+        Row: {
+          id: string;
+          slot_id: string;
+          patient_id: string;
+          hospital_id: string;
+          service_id: string;
+          booking_type: BookingType;
+          status: AppointmentStatus;
+          notes: string | null;
+          booked_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          slot_id: string;
+          patient_id: string;
+          hospital_id: string;
+          service_id: string;
+          booking_type?: BookingType;
+          status?: AppointmentStatus;
+          notes?: string | null;
+          booked_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          slot_id?: string;
+          patient_id?: string;
+          hospital_id?: string;
+          service_id?: string;
+          booking_type?: BookingType;
+          status?: AppointmentStatus;
+          notes?: string | null;
+          booked_at?: string;
+          created_at?: string;
         };
         Relationships: [];
       };

@@ -5,6 +5,7 @@ import { AdminOverview } from '../components/AdminOverview';
 import { AdminDoctors } from '../components/AdminDoctors';
 import { AdminServices } from '../components/AdminServices';
 import { AdminAppointments } from '../components/AdminAppointments';
+import { AdminServiceSlots } from '../components/AdminServiceSlots';
 
 const AdminDashboard = () => {
   const location = useLocation();
@@ -25,6 +26,8 @@ const AdminDashboard = () => {
         return <AdminDoctors />;
       case 'services':
         return <AdminServices />;
+      case 'service-slots':
+        return <AdminServiceSlots />;
       case 'appointments':
         return <AdminAppointments />;
       default:
