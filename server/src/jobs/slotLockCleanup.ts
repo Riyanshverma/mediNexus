@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { supabaseAdmin } from '../config/supabase.js';
-import { notifyAllWaiting } from './waitlistQueue.js';
+import { notifyNextWaiting } from './waitlistQueue.js';
 
 /**
  * Releases expired slot locks every 10 seconds.
@@ -29,9 +29,9 @@ export function startSlotLockCleanupJob(): void {
 
     console.log(`[slotLockCleanup] Released ${data.length} expired slot lock(s)`);
 
-    // Immediately notify any waiting patients — don't wait for the waitlist cron.
+    // Immediately notify the next waiting patient — don't wait for the waitlist cron.
     for (const { id: slotId } of data) {
-      await notifyAllWaiting(slotId);
+      await notifyNextWaiting(slotId);
     }
   });
 

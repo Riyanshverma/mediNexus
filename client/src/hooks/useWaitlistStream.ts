@@ -1,6 +1,5 @@
-import { useEffect, useRef } from 'react';
-
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
+import { useEffect, useRef, useCallback } from 'react';
+import { patientService, type WaitlistEntry } from '@/services/patient.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,19 +18,19 @@ export interface WaitlistUpdatePayload {
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
+const POLL_INTERVAL_MS = 3000;
+
 /**
- * Opens a persistent SSE connection to
- *   GET /api/patients/me/waitlist/stream
+ * Polls GET /api/patients/me/waitlist every 3 seconds.
  *
- * The server pushes a `waitlist-update` event instantly whenever one of the
- * patient's `slot_waitlist` rows changes in the database (INSERT, UPDATE,
- * DELETE).  There is no polling — the browser is notified in real time.
+ * Diffs the result against the previous poll and fires `onUpdate` for each
+ * row that was inserted, updated (status/offer fields changed), or deleted.
  *
- * Calls `onUpdate` for every incoming event.  The connection is automatically
- * closed when the component unmounts.
+ * Keeps the same external API as the old SSE-based hook so callers are
+ * unchanged.
  *
- * @param enabled     - Pass false to pause (e.g. not on the Waitlist tab).
- * @param onUpdate    - Callback invoked for each incoming waitlist change.
+ * @param enabled  - Pass false to pause polling (e.g. user is not logged in).
+ * @param onUpdate - Callback invoked for each detected change.
  */
 export function useWaitlistStream(
   enabled: boolean,
@@ -40,37 +39,90 @@ export function useWaitlistStream(
   const callbackRef = useRef(onUpdate);
   callbackRef.current = onUpdate;
 
+  // Previous snapshot keyed by entry id for fast diffing.
+  const prevEntriesRef = useRef<Map<string, WaitlistEntry>>(new Map());
+
+  const poll = useCallback(async () => {
+    try {
+      const res = await patientService.listWaitlist();
+      const fresh: WaitlistEntry[] = (res as any).data?.waitlist ?? [];
+      const prev = prevEntriesRef.current;
+
+      // ── Detect INSERTs and UPDATEs ────────────────────────────────────────
+      for (const entry of fresh) {
+        const old = prev.get(entry.id);
+
+        if (!old) {
+          // New row — INSERT
+          callbackRef.current({
+            event: 'INSERT',
+            entry: {
+              id: entry.id,
+              slot_id: entry.slot_id,
+              patient_id: entry.patient_id,
+              status: entry.status,
+              queued_at: entry.queued_at,
+              notified_at: entry.notified_at ?? null,
+              offer_expires_at: entry.offer_expires_at ?? null,
+            },
+          });
+        } else if (
+          old.status !== entry.status ||
+          old.notified_at !== entry.notified_at ||
+          old.offer_expires_at !== entry.offer_expires_at
+        ) {
+          // Status or offer fields changed — UPDATE
+          callbackRef.current({
+            event: 'UPDATE',
+            entry: {
+              id: entry.id,
+              slot_id: entry.slot_id,
+              patient_id: entry.patient_id,
+              status: entry.status,
+              queued_at: entry.queued_at,
+              notified_at: entry.notified_at ?? null,
+              offer_expires_at: entry.offer_expires_at ?? null,
+            },
+          });
+        }
+      }
+
+      // ── Detect DELETEs (rows that disappeared from the live list) ─────────
+      const freshIds = new Set(fresh.map((e) => e.id));
+      for (const [id, old] of prev) {
+        if (!freshIds.has(id)) {
+          callbackRef.current({
+            event: 'DELETE',
+            entry: {
+              id: old.id,
+              slot_id: old.slot_id,
+              patient_id: old.patient_id,
+              status: old.status,
+              queued_at: old.queued_at,
+              notified_at: old.notified_at ?? null,
+              offer_expires_at: old.offer_expires_at ?? null,
+            },
+          });
+        }
+      }
+
+      // Update snapshot
+      prevEntriesRef.current = new Map(fresh.map((e) => [e.id, e]));
+    } catch {
+      // Network errors are silent — next tick will retry automatically.
+    }
+  }, []);
+
   useEffect(() => {
     if (!enabled) return;
 
-    const url = `${BASE_URL}/api/patients/me/waitlist/stream`;
-
-    // withCredentials: true ensures the browser sends the httpOnly auth cookie
-    const es = new EventSource(url, { withCredentials: true });
-
-    es.addEventListener('waitlist-update', (e: MessageEvent) => {
-      try {
-        const payload: WaitlistUpdatePayload = JSON.parse(e.data);
-        callbackRef.current(payload);
-      } catch {
-        console.warn('[useWaitlistStream] Failed to parse waitlist-update payload:', e.data);
-      }
-    });
-
-    es.addEventListener('connected', (e: MessageEvent) => {
-      try {
-        const info = JSON.parse(e.data);
-        console.log('[useWaitlistStream] Connected:', info);
-      } catch { /* ignore */ }
-    });
-
-    es.onerror = () => {
-      // EventSource auto-reconnects — just log
-      console.warn('[useWaitlistStream] SSE error — browser will retry automatically');
-    };
-
+    // Run immediately, then on interval
+    poll();
+    const id = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
-      es.close();
+      clearInterval(id);
+      // Reset snapshot so next enable starts fresh
+      prevEntriesRef.current = new Map();
     };
-  }, [enabled]);
+  }, [enabled, poll]);
 }

@@ -1,19 +1,13 @@
 import type { Response } from 'express';
-import { supabaseAdmin } from '../config/supabase.js';
-import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /**
  * Payload pushed to the patient's browser whenever one of their waitlist rows
- * changes in the database.
+ * changes — sent directly from the server whenever a DB write occurs.
  *
- * The client uses this to update the WaitlistPanel without any polling:
- *  - status → 'notified'  : show "Accept / Decline" offer UI immediately
- *  - status → 'expired'   : remove the card or show expired state
- *  - status → 'cancelled' : remove the card
- * A full row is sent so the client can rebuild its local state without a
- * round-trip fetch.
+ * No Supabase Realtime involved: the server pushes to SSE clients inline,
+ * immediately after every relevant INSERT / UPDATE / DELETE.
  */
 export interface WaitlistUpdatePayload {
   event: 'UPDATE' | 'INSERT' | 'DELETE';
@@ -30,20 +24,11 @@ export interface WaitlistUpdatePayload {
 
 // ─── Internal state ───────────────────────────────────────────────────────────
 
-interface PatientEntry {
-  channel: RealtimeChannel;
-  /** All currently open SSE Response objects for this patient */
-  clients: Set<Response>;
-}
-
 /**
- * Map of patientId → { channel, clients }
- *
- * One Supabase Realtime channel per patient watches every row in
- * slot_waitlist WHERE patient_id = <id>.  The channel is opened when the
- * first browser tab connects and torn down when the last tab disconnects.
+ * Map of patientId → Set of open SSE Response objects for that patient.
+ * One entry per connected browser tab.
  */
-const patientChannels = new Map<string, PatientEntry>();
+const patientClients = new Map<string, Set<Response>>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,96 +40,55 @@ function sendEvent(res: Response, eventName: string, data: unknown): void {
   }
 }
 
-function broadcast(patientId: string, payload: WaitlistUpdatePayload): void {
-  const entry = patientChannels.get(patientId);
-  if (!entry) return;
-  for (const client of entry.clients) {
-    sendEvent(client, 'waitlist-update', payload);
-  }
-}
-
-/**
- * Open a Supabase Realtime channel that watches INSERT/UPDATE/DELETE on
- * `slot_waitlist` rows belonging to this patient.
- */
-function openChannel(patientId: string): RealtimeChannel {
-  const channel = supabaseAdmin
-    .channel(`waitlist:${patientId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'slot_waitlist',
-        filter: `patient_id=eq.${patientId}`,
-      },
-      (payload) => {
-        const record: any =
-          payload.eventType === 'DELETE' ? payload.old : payload.new;
-
-        if (!record?.id) return;
-
-        const update: WaitlistUpdatePayload = {
-          event: payload.eventType as 'UPDATE' | 'INSERT' | 'DELETE',
-          entry: {
-            id: record.id,
-            slot_id: record.slot_id,
-            patient_id: record.patient_id,
-            status: record.status,
-            queued_at: record.queued_at,
-            notified_at: record.notified_at ?? null,
-            offer_expires_at: record.offer_expires_at ?? null,
-          },
-        };
-
-        broadcast(patientId, update);
-      }
-    )
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log(`[waitlistChannelManager] Realtime channel open for patient: ${patientId}`);
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.error(`[waitlistChannelManager] Channel error for patient ${patientId}: ${status}`);
-      }
-    });
-
-  return channel;
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Register an SSE client for a given patient.
- * Opens a Realtime channel if one doesn't exist for this patient yet.
  */
 export function subscribeWaitlistClient(res: Response, patientId: string): void {
-  if (!patientChannels.has(patientId)) {
-    const channel = openChannel(patientId);
-    patientChannels.set(patientId, { channel, clients: new Set() });
+  if (!patientClients.has(patientId)) {
+    patientClients.set(patientId, new Set());
   }
-
-  patientChannels.get(patientId)!.clients.add(res);
+  patientClients.get(patientId)!.add(res);
   console.log(
-    `[waitlistChannelManager] Client added for patient ${patientId} — total: ${patientChannels.get(patientId)!.clients.size}`
+    `[waitlistChannelManager] Client added for patient ${patientId} — total: ${patientClients.get(patientId)!.size}`
   );
 }
 
 /**
- * Remove a client.  If it was the last one for this patient, tear down the
- * Realtime channel to avoid leaking WebSocket connections.
+ * Remove a client when it disconnects.
  */
 export function unsubscribeWaitlistClient(res: Response, patientId: string): void {
-  const entry = patientChannels.get(patientId);
-  if (!entry) return;
+  const clients = patientClients.get(patientId);
+  if (!clients) return;
 
-  entry.clients.delete(res);
+  clients.delete(res);
   console.log(
-    `[waitlistChannelManager] Client removed for patient ${patientId} — remaining: ${entry.clients.size}`
+    `[waitlistChannelManager] Client removed for patient ${patientId} — remaining: ${clients.size}`
   );
 
-  if (entry.clients.size === 0) {
-    supabaseAdmin.removeChannel(entry.channel);
-    patientChannels.delete(patientId);
-    console.log(`[waitlistChannelManager] Realtime channel closed for patient: ${patientId}`);
+  if (clients.size === 0) {
+    patientClients.delete(patientId);
   }
+}
+
+/**
+ * Push a waitlist update directly to all open SSE connections for a patient.
+ *
+ * Call this immediately after every relevant DB write — no Realtime needed.
+ */
+export function pushWaitlistUpdate(
+  patientId: string,
+  payload: WaitlistUpdatePayload
+): void {
+  const clients = patientClients.get(patientId);
+  if (!clients || clients.size === 0) return;
+
+  for (const client of clients) {
+    sendEvent(client, 'waitlist-update', payload);
+  }
+
+  console.log(
+    `[waitlistChannelManager] Pushed ${payload.event}/${payload.entry.status} to patient ${patientId} (${clients.size} client(s))`
+  );
 }

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Loader2, X, ListChecks, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { patientService, type PatientAppointment } from '@/services/patient.service';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
+import { useAppointmentRefresh } from '@/hooks/useAppointmentRefresh';
 
 type Filter = 'upcoming' | 'past' | 'all';
 
@@ -26,7 +27,7 @@ export const PatientAppointments = ({ setActiveTab }: { setActiveTab?: (tab: str
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     setLoading(true);
     try {
       const res = await patientService.listAppointments(filter);
@@ -36,11 +37,14 @@ export const PatientAppointments = ({ setActiveTab }: { setActiveTab?: (tab: str
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
 
   useEffect(() => {
     fetchAppointments();
-  }, [filter]);
+  }, [fetchAppointments]);
+
+  // Re-fetch whenever a booking is confirmed anywhere in the app
+  useAppointmentRefresh(fetchAppointments);
 
   const handleCancel = async (id: string) => {
     setCancelling(id);
