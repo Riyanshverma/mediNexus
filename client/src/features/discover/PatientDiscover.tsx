@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
   Search,
@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   X,
   Radio,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +53,7 @@ type Step = 'search' | 'hospital' | 'slots' | 'confirm' | 'done';
 
 const PatientDiscover = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
 
   // Search state
@@ -75,6 +78,51 @@ const PatientDiscover = () => {
   const [booking, setBooking] = useState(false);
   const [bookedAppt, setBookedAppt] = useState<any>(null);
 
+  // Waitlist — track which slot IDs the patient just joined so the button updates immediately
+  const [waitlistedSlotIds, setWaitlistedSlotIds] = useState<Set<string>>(new Set());
+
+  // ── Handle incoming waitlist-accepted slot (from PatientDashboard) ──
+  // When a patient accepts a waitlist offer they are navigated here with
+  // router state: { waitlistSlot: { id, slot_start, slot_end, doctor_id, locked_until } }
+  // We load the doctor info and jump straight to the confirm step.
+  useEffect(() => {
+    const ws = (location.state as any)?.waitlistSlot;
+    if (!ws) return;
+
+    // Clear the router state so refreshing doesn't replay this
+    window.history.replaceState({}, document.title);
+
+    // We have the slot; we need the doctor + hospital to fill the confirm step.
+    patientService.getDoctorSlots(ws.doctor_id).then((res: any) => {
+      const doctor = res.data?.doctor;
+      if (!doctor) {
+        toast.error('Could not load doctor info. Please book manually.');
+        return;
+      }
+
+      const slot: Slot = {
+        id: ws.id,
+        doctor_id: ws.doctor_id,
+        slot_start: ws.slot_start,
+        slot_end: ws.slot_end,
+        status: 'locked',
+      };
+
+      // Build a minimal hospital object from the doctor's hospitals join
+      const hospital = doctor.hospitals
+        ? { id: doctor.hospital_id ?? '', name: doctor.hospitals.name, type: '', address: '', city: doctor.hospitals.city, state: '', is_approved: true, has_slots_today: false }
+        : null;
+
+      setSelectedDoctor({ id: ws.doctor_id, full_name: doctor.full_name, specialisation: doctor.specialisation });
+      setSelectedSlot(slot);
+      setLockedUntil(ws.locked_until);
+      if (hospital) setSelectedHospital(hospital);
+      setStep('confirm');
+    }).catch(() => {
+      toast.error('Could not load booking details. Please find the slot manually.');
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Real-time slot stream ──
   // `streamConnected` is purely cosmetic — shows a live indicator badge.
   const [streamConnected, setStreamConnected] = useState(false);
@@ -93,8 +141,8 @@ const PatientDiscover = () => {
       }
 
       if (payload.event === 'INSERT') {
-        // New slot created — add if available and not already present
-        if (payload.slot.status !== 'available') return prev;
+        // New slot created — add if available or booked, and not already present
+        if (payload.slot.status !== 'available' && payload.slot.status !== 'booked') return prev;
         if (prev.some((s) => s.id === payload.slot.id)) return prev;
         const newSlot: Slot = {
           id: payload.slot.id,
@@ -111,15 +159,24 @@ const PatientDiscover = () => {
       // UPDATE — most common path
       const { id, status } = payload.slot;
 
-      if (status !== 'available') {
-        // Slot is now booked / locked / cancelled — remove from grid
-        // Also clear the selection if the user had picked this slot
+      if (status !== 'available' && status !== 'booked') {
+        // Slot is now locked/cancelled — remove from grid entirely
         if (selectedSlot?.id === id) {
           setSelectedSlot(null);
           setLockedUntil(null);
           toast.warning('The slot you selected was just taken. Please choose another.');
         }
         return prev.filter((s) => s.id !== id);
+      }
+
+      if (status === 'booked') {
+        // Slot just got booked — deselect if the patient had it selected, but keep in grid
+        if (selectedSlot?.id === id) {
+          setSelectedSlot(null);
+          setLockedUntil(null);
+          toast.warning('The slot you selected was just booked. You can join the waitlist instead.');
+        }
+        return prev.map((s) => (s.id === id ? { ...s, status } : s));
       }
 
       // Status flipped back to available (e.g. lock expired, booking cancelled)
@@ -180,6 +237,7 @@ const PatientDiscover = () => {
     setSelectedSlot(null);
     setSlots([]);
     setStreamConnected(false);
+    setWaitlistedSlotIds(new Set());
     setStep('slots');
     const date = slotDate || format(new Date(), 'yyyy-MM-dd');
     setSlotsLoading(true);
@@ -256,6 +314,22 @@ const PatientDiscover = () => {
     }
   };
 
+  // ── Join waitlist for a booked slot ──
+  const joinWaitlistForSlot = async (slot: Slot) => {
+    try {
+      await patientService.joinWaitlist(slot.id);
+      setWaitlistedSlotIds((prev) => new Set([...prev, slot.id]));
+      toast.success("You're on the waitlist! We'll notify you when this slot opens.", {
+        action: {
+          label: 'View Waitlist',
+          onClick: () => window.location.href = '/patient/dashboard?tab=waitlist',
+        },
+      });
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to join waitlist');
+    }
+  };
+
   const resetToSearch = () => {
     setStep('search');
     setSelectedHospital(null);
@@ -266,6 +340,7 @@ const PatientDiscover = () => {
     setBookedAppt(null);
     setSlots([]);
     setStreamConnected(false);
+    setWaitlistedSlotIds(new Set());
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -542,7 +617,12 @@ const PatientDiscover = () => {
             ) : (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  {slots.length} slot{slots.length !== 1 ? 's' : ''} available
+                  {slots.filter(s => s.status === 'available').length} available
+                  {slots.filter(s => s.status === 'booked').length > 0 && (
+                    <span className="ml-2 text-muted-foreground/60">
+                      · {slots.filter(s => s.status === 'booked').length} booked (join waitlist)
+                    </span>
+                  )}
                   {streamConnected && (
                     <span className="ml-2 text-green-600">· updating live</span>
                   )}
@@ -550,6 +630,38 @@ const PatientDiscover = () => {
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {slots.map(slot => {
                     const isSelected = selectedSlot?.id === slot.id;
+                    const isBooked = slot.status === 'booked';
+                    const alreadyWaiting = waitlistedSlotIds.has(slot.id);
+
+                    if (isBooked) {
+                      return (
+                        <button
+                          key={slot.id}
+                          onClick={() => !alreadyWaiting && joinWaitlistForSlot(slot)}
+                          disabled={alreadyWaiting}
+                          className={`rounded-lg border p-3 text-sm transition-colors text-center ${
+                            alreadyWaiting
+                              ? 'border-primary/30 bg-primary/5 text-primary opacity-70 cursor-default'
+                              : 'border-dashed border-muted-foreground/30 bg-muted/30 hover:border-primary/40 hover:bg-primary/5 text-muted-foreground hover:text-primary'
+                          }`}
+                        >
+                          <div className="font-medium text-xs">
+                            {format(parseISO(slot.slot_start), 'h:mm a')}
+                          </div>
+                          <div className="text-xs mt-0.5 opacity-75">
+                            {format(parseISO(slot.slot_start), 'MMM d')}
+                          </div>
+                          <div className="flex items-center justify-center gap-0.5 mt-1 text-[10px]">
+                            {alreadyWaiting ? (
+                              <><BellOff className="h-2.5 w-2.5" /> Waiting</>
+                            ) : (
+                              <><Bell className="h-2.5 w-2.5" /> Waitlist</>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    }
+
                     return (
                       <button
                         key={slot.id}

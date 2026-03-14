@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Clock, Loader2, X, UserPlus, ListChecks } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, Clock, Loader2, X, ListChecks, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { patientService, type PatientAppointment } from '@/services/patient.service';
 import { format, parseISO } from 'date-fns';
@@ -19,11 +20,11 @@ const STATUS_COLORS: Record<string, string> = {
 const CANCELLABLE = ['booked', 'checked_in'];
 
 export const PatientAppointments = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }) => {
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
-  const [joiningWaitlist, setJoiningWaitlist] = useState<string | null>(null);
 
   const fetchAppointments = async () => {
     setLoading(true);
@@ -51,18 +52,6 @@ export const PatientAppointments = ({ setActiveTab }: { setActiveTab?: (tab: str
       toast.error(e.message ?? 'Could not cancel appointment');
     } finally {
       setCancelling(null);
-    }
-  };
-
-  const handleJoinWaitlist = async (slotId: string) => {
-    setJoiningWaitlist(slotId);
-    try {
-      await patientService.joinWaitlist(slotId);
-      toast.success("Added to waitlist");
-    } catch (e: any) {
-      toast.error(e.message ?? 'Could not join waitlist');
-    } finally {
-      setJoiningWaitlist(null);
     }
   };
 
@@ -145,18 +134,15 @@ export const PatientAppointments = ({ setActiveTab }: { setActiveTab?: (tab: str
                     Cancel
                   </Button>
                 )}
-                {appt.status === 'cancelled' && appt.slot_id && (
+                {appt.status === 'cancelled' && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="text-primary border-primary/30 hover:bg-primary/10"
-                    disabled={joiningWaitlist === appt.slot_id}
-                    onClick={() => handleJoinWaitlist(appt.slot_id)}
+                    onClick={() => navigate('/patient/discover')}
                   >
-                    {joiningWaitlist === appt.slot_id
-                      ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : <UserPlus className="h-4 w-4 mr-1" />}
-                    Join Waitlist
+                    <ArrowRight className="h-4 w-4 mr-1" />
+                    Book Again
                   </Button>
                 )}
               </div>

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments, WaitlistPanel } from '../..';
 
 export const PatientDashboard = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('home');
 
   useEffect(() => {
@@ -15,6 +16,14 @@ export const PatientDashboard = () => {
     }
   }, [location.state]);
 
+  // Called when the patient accepts a waitlist offer — navigate to Discover
+  // with the locked slot pre-loaded so they can confirm the booking immediately.
+  const handleOfferAccepted = (slot: any, lockedUntil: string) => {
+    navigate('/patient/discover', {
+      state: { waitlistSlot: { ...slot, locked_until: lockedUntil } },
+    });
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
@@ -22,7 +31,7 @@ export const PatientDashboard = () => {
       case 'appointments':
         return <PatientAppointments setActiveTab={setActiveTab} />;
       case 'waitlist':
-        return <WaitlistPanel />;
+        return <WaitlistPanel onOfferAccepted={handleOfferAccepted} />;
       case 'passport':
         return <PatientHealthPassport />;
       default:

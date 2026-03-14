@@ -263,6 +263,27 @@ export async function joinWaitlist(
 
     if (!slot) throw new NotFoundError('Slot not found');
 
+    if (slot.status !== 'booked') {
+      throw new BadRequestError(
+        slot.status === 'available'
+          ? 'This slot is available — book it directly instead of joining the waitlist'
+          : 'This slot is not available for waitlisting'
+      );
+    }
+
+    // Check the patient doesn't already own an active appointment for this slot
+    const { data: ownAppt } = await supabaseAdmin
+      .from('appointments')
+      .select('id')
+      .eq('slot_id', slot_id)
+      .eq('patient_id', patient.id)
+      .not('status', 'eq', 'cancelled')
+      .maybeSingle();
+
+    if (ownAppt) {
+      throw new BadRequestError('You already have a booking for this slot');
+    }
+
     // Check not already on waitlist
     const { data: existing } = await supabaseAdmin
       .from('slot_waitlist')
