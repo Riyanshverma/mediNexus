@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, FileText, Search, ChevronRight, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { patientService, type PatientAppointment } from '@/services/patient.service';
 import { format, parseISO } from 'date-fns';
+import { useAppointmentRefresh } from '@/hooks/useAppointmentRefresh';
 
 function statusColor(status: string) {
   const map: Record<string, string> = {
@@ -22,13 +23,20 @@ export const PatientHome = ({ setActiveTab }: { setActiveTab?: (tab: string) => 
   const [upcoming, setUpcoming] = useState<PatientAppointment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchUpcoming = useCallback(() => {
     patientService
       .listAppointments('upcoming')
       .then((res) => setUpcoming((res as any).data?.appointments ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchUpcoming();
+  }, [fetchUpcoming]);
+
+  // Re-fetch whenever a booking is confirmed anywhere in the app
+  useAppointmentRefresh(fetchUpcoming);
 
   const nextAppt = upcoming[0] ?? null;
 

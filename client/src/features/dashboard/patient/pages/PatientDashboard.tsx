@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments, WaitlistPanel } from '../..';
+import { useWaitlistStream, type WaitlistUpdatePayload } from '@/hooks/useWaitlistStream';
 
 export const PatientDashboard = () => {
   const location = useLocation();
@@ -8,13 +10,27 @@ export const PatientDashboard = () => {
   const [activeTab, setActiveTab] = useState('home');
 
   useEffect(() => {
-    // If we passed a tab state through React Router's navigate
     if (location.state?.tab) {
       setActiveTab(location.state.tab);
-      // Clear the state so refreshing doesn't lock us in this tab
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
+
+  // ── Always-on waitlist polling ────────────────────────────────────────────
+  // Fires toast when a new 'notified' offer arrives, regardless of active tab.
+  const handleWaitlistUpdate = useCallback((payload: WaitlistUpdatePayload) => {
+    if (payload.event === 'UPDATE' && payload.entry.status === 'notified') {
+      toast.info('A slot opened up! Check your waitlist.', {
+        duration: 10000,
+        action: {
+          label: 'View Waitlist',
+          onClick: () => setActiveTab('waitlist'),
+        },
+      });
+    }
+  }, []);
+
+  useWaitlistStream(true, handleWaitlistUpdate);
 
   const handleOfferAccepted = (slot: any, lockedUntil: string) => {
   navigate('/patient/discover', {
@@ -40,8 +56,6 @@ export const PatientDashboard = () => {
   return (
     <div className="min-h-screen bg-muted/20">
       <PatientDashboardHeader activeTab={activeTab} setActiveTab={setActiveTab} />
-      
-      {/* 7xl max-width for the main content area to follow header boundaries */}
       <main className="w-full max-w-7xl mx-auto">
         {renderContent()}
       </main>

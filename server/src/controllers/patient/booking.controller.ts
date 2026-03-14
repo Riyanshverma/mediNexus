@@ -3,7 +3,8 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, NotFoundError, BadRequestError, ConflictError } from '../../utils/errors.js';
 import { requirePatient } from '../../utils/lookup.js';
-import { notifyAllWaiting } from '../../jobs/waitlistQueue.js';
+import { notifyNextWaiting } from '../../jobs/waitlistQueue.js';
+import { pushWaitlistUpdate } from '../../sse/waitlistChannelManager.js';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -313,6 +314,21 @@ export async function joinWaitlist(
       throw new AppError('Failed to join waitlist', 500);
     }
 
+    // Push the new entry to the patient's SSE so WaitlistPanel can re-fetch
+    // and show the card immediately (INSERT carries no join data — client re-fetches).
+    pushWaitlistUpdate(patient.id, {
+      event: 'INSERT',
+      entry: {
+        id: data.id,
+        slot_id: data.slot_id,
+        patient_id: data.patient_id,
+        status: data.status,
+        queued_at: data.queued_at,
+        notified_at: data.notified_at ?? null,
+        offer_expires_at: data.offer_expires_at ?? null,
+      },
+    });
+
     sendSuccess(res, { waitlist_entry: data }, "You've been added to the waitlist", 201);
   } catch (err) {
     next(err);
@@ -382,7 +398,7 @@ export async function acceptWaitlistOffer(
     // Fetch the waitlist entry — must belong to this patient
     const { data: entry, error: fetchError } = await supabaseAdmin
       .from('slot_waitlist')
-      .select('id, slot_id, patient_id, status, offer_expires_at')
+      .select('id, slot_id, patient_id, status, offer_expires_at, queued_at, notified_at')
       .eq('id', entryId)
       .eq('patient_id', patient.id)
       .single();
@@ -457,6 +473,20 @@ export async function acceptWaitlistOffer(
       { slot, locked_until: lockedUntil },
       'Offer accepted. You have 3 minutes to confirm your booking.'
     );
+
+    // Push the accepted status to the patient's SSE so the card is cleared.
+    pushWaitlistUpdate(patient.id, {
+      event: 'UPDATE',
+      entry: {
+        id: accepted.id,
+        slot_id: accepted.slot_id,
+        patient_id: patient.id,
+        status: 'accepted',
+        queued_at: entry.queued_at,
+        notified_at: entry.notified_at ?? null,
+        offer_expires_at: entry.offer_expires_at ?? null,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -495,12 +525,32 @@ export async function declineWaitlistOffer(
       throw new BadRequestError(`Cannot decline an entry with status: ${entry.status}`);
     }
 
-    await supabaseAdmin
+    const { data: cancelled, error: cancelError } = await supabaseAdmin
       .from('slot_waitlist')
       .update({ status: 'cancelled' })
-      .eq('id', entryId);
+      .eq('id', entryId)
+      .select('id, slot_id, patient_id, status, queued_at, notified_at, offer_expires_at')
+      .single();
 
-    // If this patient had an active offer, notify remaining waiting patients
+    if (cancelError || !cancelled) {
+      throw new AppError('Failed to remove from waitlist', 500);
+    }
+
+    // Push the cancelled status to the patient's SSE so their UI clears the card.
+    pushWaitlistUpdate(cancelled.patient_id, {
+      event: 'UPDATE',
+      entry: {
+        id: cancelled.id,
+        slot_id: cancelled.slot_id,
+        patient_id: cancelled.patient_id,
+        status: cancelled.status,
+        queued_at: cancelled.queued_at,
+        notified_at: cancelled.notified_at ?? null,
+        offer_expires_at: cancelled.offer_expires_at ?? null,
+      },
+    });
+
+    // If this patient had an active offer, promote the next patient in the queue.
     if (entry.status === 'notified') {
       const { data: slot } = await supabaseAdmin
         .from('appointment_slots')
@@ -509,7 +559,7 @@ export async function declineWaitlistOffer(
         .single();
 
       if (slot?.status === 'available') {
-        await notifyAllWaiting(entry.slot_id);
+        await notifyNextWaiting(entry.slot_id);
       }
     }
 
@@ -539,7 +589,7 @@ export async function leaveWaitlist(
 
     const { data: entry, error: fetchError } = await supabaseAdmin
       .from('slot_waitlist')
-      .select('id, status, patient_id')
+      .select('id, status, patient_id, slot_id')
       .eq('id', entryId)
       .eq('patient_id', patient.id)
       .single();
@@ -552,10 +602,43 @@ export async function leaveWaitlist(
       throw new BadRequestError(`Cannot leave waitlist with status: ${entry.status}`);
     }
 
-    await supabaseAdmin
+    const { data: cancelled, error: cancelError } = await supabaseAdmin
       .from('slot_waitlist')
       .update({ status: 'cancelled' })
-      .eq('id', entryId);
+      .eq('id', entryId)
+      .select('id, slot_id, patient_id, status, queued_at, notified_at, offer_expires_at')
+      .single();
+
+    if (cancelError || !cancelled) {
+      throw new AppError('Failed to leave waitlist', 500);
+    }
+
+    // Push the cancelled status to the patient's SSE so their UI clears the card.
+    pushWaitlistUpdate(cancelled.patient_id, {
+      event: 'UPDATE',
+      entry: {
+        id: cancelled.id,
+        slot_id: cancelled.slot_id,
+        patient_id: cancelled.patient_id,
+        status: cancelled.status,
+        queued_at: cancelled.queued_at,
+        notified_at: cancelled.notified_at ?? null,
+        offer_expires_at: cancelled.offer_expires_at ?? null,
+      },
+    });
+
+    // If this patient was holding an active offer, promote the next in queue.
+    if (entry.status === 'notified') {
+      const { data: slot } = await supabaseAdmin
+        .from('appointment_slots')
+        .select('status')
+        .eq('id', entry.slot_id)
+        .single();
+
+      if (slot?.status === 'available') {
+        await notifyNextWaiting(entry.slot_id);
+      }
+    }
 
     sendSuccess(res, null, 'Left the waitlist');
   } catch (err) {

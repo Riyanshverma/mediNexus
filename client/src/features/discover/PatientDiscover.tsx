@@ -23,6 +23,7 @@ import { patientService } from '@/services/patient.service';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { useSlotStream, type SlotUpdatePayload } from '@/hooks/useSlotStream';
+import { dispatchAppointmentBooked } from '@/hooks/useAppointmentRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -307,6 +308,8 @@ const PatientDiscover = () => {
       setBookedAppt((res as any).data?.appointment ?? null);
       setStep('done');
       toast.success('Appointment booked!');
+      // Notify PatientHome and PatientAppointments to re-fetch without a page reload
+      dispatchAppointmentBooked();
     } catch (err: any) {
       toast.error(err?.message ?? 'Failed to book appointment');
     } finally {
@@ -322,7 +325,7 @@ const PatientDiscover = () => {
       toast.success("You're on the waitlist! We'll notify you when this slot opens.", {
         action: {
           label: 'View Waitlist',
-          onClick: () => window.location.href = '/patient/dashboard?tab=waitlist',
+          onClick: () => navigate('/patient/dashboard', { state: { tab: 'waitlist' } }),
         },
       });
     } catch (err: any) {
