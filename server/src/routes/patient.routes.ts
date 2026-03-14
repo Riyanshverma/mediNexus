@@ -30,6 +30,7 @@ import {
   createAccessGrant,
   revokeAccessGrant,
 } from '../controllers/patient/grants.controller.js';
+import { streamPatientWaitlist } from '../controllers/sse/waitlist.controller.js';
 
 export const patientRouter = Router();
 
@@ -51,6 +52,8 @@ patientRouter.post('/me/slots/lock', lockSlot);
 patientRouter.patch('/me/slots/:slotId/release', releaseSlotLock);
 
 // ── Waitlist ──────────────────────────────────────────────────────────
+// SSE stream must be declared BEFORE the plain GET /me/waitlist route
+patientRouter.get('/me/waitlist/stream', streamPatientWaitlist);
 patientRouter.get('/me/waitlist', listPatientWaitlist);
 patientRouter.post('/me/waitlist', joinWaitlist);
 patientRouter.patch('/me/waitlist/:entryId/accept', acceptWaitlistOffer);

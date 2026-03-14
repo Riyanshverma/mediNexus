@@ -196,7 +196,7 @@ export async function getDoctorSlots(
       .from('appointment_slots')
       .select('id, slot_start, slot_end, status')
       .eq('doctor_id', doctorId)
-      .eq('status', 'available')
+      .in('status', ['available', 'booked'])
       .order('slot_start');
 
     if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {

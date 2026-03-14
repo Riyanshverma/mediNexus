@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Loader2, Bell, BellOff, CheckCircle2, X, UserMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { patientService, type WaitlistEntry } from '@/services/patient.service';
 import { format, parseISO, formatDistanceToNowStrict } from 'date-fns';
 import { toast } from 'sonner';
+import { useWaitlistStream, type WaitlistUpdatePayload } from '@/hooks/useWaitlistStream';
 
 // Live countdown for the offer expiry
 function useCountdown(expiresAt: string | null): string | null {
@@ -212,30 +213,68 @@ export const WaitlistPanel = ({ onOfferAccepted }: WaitlistPanelProps) => {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ── Initial fetch ─────────────────────────────────────────────────────────
   const fetchWaitlist = useCallback(async () => {
     try {
       const res = await patientService.listWaitlist();
       setEntries((res as any).data?.waitlist ?? []);
     } catch {
-      // silent — don't disrupt UI on background poll failure
+      // silent
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Initial load + 30s polling
   useEffect(() => {
     fetchWaitlist();
-    pollRef.current = setInterval(fetchWaitlist, 30_000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
   }, [fetchWaitlist]);
 
+  // ── Real-time SSE — zero polling ──────────────────────────────────────────
+  // The server pushes a waitlist-update event the instant a row changes in DB.
+  // terminal statuses → remove card; notified → update status in place + toast
+  const handleStreamUpdate = useCallback((payload: WaitlistUpdatePayload) => {
+    const { event, entry } = payload;
+    const terminalStatuses = ['expired', 'cancelled', 'accepted'];
+
+    if (event === 'DELETE' || terminalStatuses.includes(entry.status)) {
+      setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+      return;
+    }
+
+    if (event === 'INSERT') {
+      // Re-fetch to get doctor/hospital join data for the new entry
+      fetchWaitlist();
+      return;
+    }
+
+    // UPDATE — status transition (waiting → notified or back)
+    setEntries((prev) => {
+      const idx = prev.findIndex((e) => e.id === entry.id);
+      if (idx === -1) {
+        // Not in local state yet — re-fetch
+        fetchWaitlist();
+        return prev;
+      }
+      // Merge updated scalar fields, keep existing join data
+      const updated: WaitlistEntry = {
+        ...prev[idx],
+        status: entry.status,
+        notified_at: entry.notified_at,
+        offer_expires_at: entry.offer_expires_at,
+      };
+      if (entry.status === 'notified' && prev[idx].status !== 'notified') {
+        toast.info('A slot opened up — check your waitlist!', { duration: 8000 });
+      }
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  }, [fetchWaitlist]);
+
+  useWaitlistStream(true, handleStreamUpdate);
+
   const handleAccepted = (slot: any, lockedUntil: string) => {
-    // Remove the accepted entry from local state immediately
     setEntries((prev) => prev.filter((e) => e.slot_id !== slot.id));
     if (onOfferAccepted) {
       onOfferAccepted(slot, lockedUntil);
@@ -264,8 +303,8 @@ export const WaitlistPanel = ({ onOfferAccepted }: WaitlistPanelProps) => {
           <h1 className="text-3xl font-light tracking-tight">My Waitlist</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {hasOffers
-              ? 'You have an active slot offer — accept before time runs out!'
-              : 'You\'ll be notified when a slot opens up. Refreshes every 30s.'}
+              ? "You have an active slot offer — accept before time runs out!"
+              : "You'll be notified instantly when a slot opens up."}
           </p>
         </div>
         {loading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
