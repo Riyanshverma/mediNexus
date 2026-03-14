@@ -37,7 +37,7 @@ const MessageBubble = ({ msg }: { msg: AIChatMessage }) => {
         </div>
       )}
       <div
-        className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
           isUser
             ? 'bg-primary text-primary-foreground rounded-br-sm'
             : 'bg-muted/70 text-foreground rounded-bl-sm border border-border/50'
@@ -173,8 +173,8 @@ export const PatientAIChat = () => {
       {open && (
         <div
           ref={panelRef}
-          className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] flex flex-col bg-card border border-border rounded-2xl shadow-2xl overflow-hidden"
-          style={{ height: '520px' }}
+          className="fixed bottom-6 right-6 z-50 w-[540px] max-w-[calc(100vw-2rem)] flex flex-col bg-card border border-border rounded-2xl shadow-2xl overflow-hidden"
+          style={{ height: '680px' }}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-card flex-shrink-0">
