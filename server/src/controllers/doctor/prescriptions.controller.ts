@@ -161,6 +161,29 @@ export async function createPrescription(
       throw new AppError('Failed to create prescription items', 500);
     }
 
+    // Auto-complete the appointment now that a prescription has been issued
+    const { error: completeError } = await supabaseAdmin
+      .from('appointments')
+      .update({ status: 'completed' })
+      .eq('id', appointmentId);
+
+    if (completeError) {
+      // Non-fatal: log but don't fail — prescription was created successfully
+      console.error('[createPrescription] auto-complete appointment failed:', completeError.message);
+    } else {
+      // Write status log entry
+      const { error: logError } = await supabaseAdmin.from('appointment_status_log').insert({
+        appointment_id: appointmentId,
+        old_status: appointment.status,
+        new_status: 'completed',
+        changed_by: userId,
+        changed_at: new Date().toISOString(),
+      });
+      if (logError) {
+        console.error('[createPrescription] status log insert failed:', logError.message);
+      }
+    }
+
     sendSuccess(
       res,
       { prescription: { ...prescription, prescription_items: insertedItems } },
@@ -191,7 +214,12 @@ export async function listDoctorPrescriptions(
       .from('prescriptions')
       .select(
         `id, appointment_id, doctor_id, patient_id, illness_description, issued_at, pdf_url,
-         patients ( full_name, dob )`
+         patients ( full_name, dob ),
+         prescription_items (
+           id, prescription_id, medicine_id,
+           dosage, frequency, duration, doctor_comment,
+           medicines ( medicine_name, therapeutic_class )
+         )`
       )
       .eq('doctor_id', doctor.id)
       .order('issued_at', { ascending: false });
@@ -227,7 +255,13 @@ export async function getDoctorPrescription(
       .from('prescriptions')
       .select(
         `id, appointment_id, doctor_id, patient_id, illness_description, issued_at, pdf_url,
-         patients ( full_name, dob ),
+         patients ( full_name, dob, blood_group, known_allergies ),
+         doctors ( full_name, specialisation, qualifications, registration_number, department ),
+         appointments (
+           hospital_id,
+           appointment_slots ( slot_start ),
+           hospitals ( name, city )
+         ),
          prescription_items (
            id, prescription_id, medicine_id,
            dosage, frequency, duration, doctor_comment,

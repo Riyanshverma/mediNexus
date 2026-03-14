@@ -236,7 +236,7 @@ export const PrescriptionWriter = ({ onCancel, onSuccess }: PrescriptionWriterPr
         const allAppts: DoctorAppointment[] = (apptRes as any).data?.appointments ?? [];
         setAppointments(
           allAppts.filter((a) =>
-            ['booked', 'checked_in', 'in_progress', 'completed'].includes(a.status)
+            ['booked', 'checked_in', 'in_progress'].includes(a.status)
           )
         );
       } catch (e: any) {

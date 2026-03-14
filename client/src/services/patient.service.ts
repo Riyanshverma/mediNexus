@@ -33,8 +33,18 @@ export interface PatientPrescription {
   issued_at: string;
   pdf_url: string | null;
   prescription_items?: PrescriptionItem[];
-  doctors?: { full_name: string; specialisation: string } | null;
-  hospitals?: { name: string; city: string } | null;
+  doctors?: {
+    full_name: string;
+    specialisation: string;
+    qualifications?: string | null;
+    registration_number?: string | null;
+    department?: string | null;
+  } | null;
+  appointments?: {
+    hospital_id: string;
+    appointment_slots: { slot_start: string } | null;
+    hospitals: { name: string; city: string } | null;
+  } | null;
 }
 
 export interface PrescriptionItem {
@@ -45,7 +55,7 @@ export interface PrescriptionItem {
   frequency: string;
   duration: string;
   doctor_comment: string | null;
-  medicines?: { medicine_name: string; composition: string | null } | null;
+  medicines?: { medicine_name: string; composition: string | null; therapeutic_class?: string | null } | null;
 }
 
 export interface PatientReport {
@@ -149,6 +159,10 @@ export const patientService = {
   // Health passport
   getPassport: () =>
     api.get<{ data: PatientPassport }>('/api/patients/me/passport'),
+
+  // Prescriptions (individual fetch for PDF view)
+  getPrescription: (id: string) =>
+    api.get<{ data: { prescription: PatientPrescription } }>(`/api/patients/me/prescriptions/${id}`),
 
   // Access grants
   listGrants: () =>

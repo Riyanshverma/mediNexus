@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { FileText, Pill, Share2, Loader2, Trash2, Plus } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { FileText, Pill, Share2, Loader2, Trash2, Plus, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { patientService, type PatientPassport, type AccessGrant } from '@/services/patient.service';
 import { format, parseISO } from 'date-fns';
@@ -13,6 +13,11 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  PrescriptionViewModal,
+  normalizePrescriptionData,
+  type PDFPrescriptionData,
+} from '@/features/dashboard/shared/PrescriptionViewModal';
 
 type PassportTab = 'prescriptions' | 'reports' | 'grants';
 
@@ -21,6 +26,10 @@ export const PatientHealthPassport = () => {
   const [passport, setPassport] = useState<PatientPassport | null>(null);
   const [loading, setLoading] = useState(true);
   const [revoking, setRevoking] = useState<string | null>(null);
+
+  // PDF modal state
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [selectedRxId, setSelectedRxId] = useState<string | null>(null);
 
   // Grant creation dialog state
   const [grantOpen, setGrantOpen] = useState(false);
@@ -44,6 +53,19 @@ export const PatientHealthPassport = () => {
   useEffect(() => {
     fetchPassport();
   }, []);
+
+  // Fetcher for the PDF modal — uses the single-prescription patient endpoint
+  const fetchPDFData = useCallback(async (id: string): Promise<PDFPrescriptionData> => {
+    const res = await patientService.getPrescription(id);
+    const raw = (res as any).data?.prescription;
+    if (!raw) throw new Error('Prescription not found');
+    return normalizePrescriptionData(raw);
+  }, []);
+
+  const openModal = (rxId: string) => {
+    setSelectedRxId(rxId);
+    setViewModalOpen(true);
+  };
 
   const handleRevoke = async (grantId: string) => {
     setRevoking(grantId);
@@ -95,6 +117,7 @@ export const PatientHealthPassport = () => {
   ];
 
   return (
+    <>
     <div className="p-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-light tracking-tight">Health Passport</h1>
@@ -180,6 +203,14 @@ export const PatientHealthPassport = () => {
                           {(rx as any).doctors ? ` · Dr. ${(rx as any).doctors.full_name}` : ''}
                         </p>
                       </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openModal(rx.id)}
+                      >
+                        <Eye className="h-3.5 w-3.5 mr-1.5" />
+                        View PDF
+                      </Button>
                     </div>
                     {(rx.prescription_items ?? []).length > 0 && (
                       <div className="border-t pt-3 space-y-1.5">
@@ -264,5 +295,16 @@ export const PatientHealthPassport = () => {
         </>
       )}
     </div>
+
+      {selectedRxId && (
+        <PrescriptionViewModal
+          open={viewModalOpen}
+          onClose={() => setViewModalOpen(false)}
+          prescriptionId={selectedRxId}
+          label="Prescription Preview"
+          fetchData={fetchPDFData}
+        />
+      )}
+    </>
   );
 };

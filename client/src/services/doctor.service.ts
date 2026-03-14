@@ -46,6 +46,14 @@ export interface DoctorSlot {
   locked_until: string | null;
 }
 
+export interface DoctorLetterheadInfo {
+  full_name: string;
+  specialisation: string;
+  qualifications?: string | null;
+  registration_number?: string | null;
+  department?: string | null;
+}
+
 export interface Prescription {
   id: string;
   appointment_id: string;
@@ -55,8 +63,13 @@ export interface Prescription {
   issued_at: string;
   pdf_url: string | null;
   prescription_items?: PrescriptionItem[];
-  patients?: { full_name: string } | null;
-  appointments?: { appointment_slots: { slot_start: string; slot_end: string } | null } | null;
+  patients?: { full_name: string; dob?: string | null; blood_group?: string | null; known_allergies?: string | null } | null;
+  doctors?: DoctorLetterheadInfo | null;
+  appointments?: {
+    hospital_id: string;
+    appointment_slots: { slot_start: string } | null;
+    hospitals: { name: string; city: string } | null;
+  } | null;
 }
 
 export interface PrescriptionItem {
@@ -67,7 +80,7 @@ export interface PrescriptionItem {
   frequency: string;
   duration: string;
   doctor_comment: string | null;
-  medicines?: { medicine_name: string; composition: string | null } | null;
+  medicines?: { medicine_name: string; composition: string | null; therapeutic_class?: string | null } | null;
 }
 
 export interface MedicineResult {

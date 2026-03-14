@@ -32,6 +32,14 @@ interface PrescriptionWithItems {
   doctors: {
     full_name: string;
     specialisation: string;
+    qualifications?: string | null;
+    registration_number?: string | null;
+    department?: string | null;
+  } | null;
+  appointments: {
+    hospital_id: string;
+    appointment_slots: { slot_start: string } | null;
+    hospitals: { name: string; city: string } | null;
   } | null;
   prescription_items: PrescriptionItemWithMedicine[];
 }
@@ -92,7 +100,12 @@ export async function getPatientPrescription(
       .select(
         `id, appointment_id, doctor_id, patient_id,
          illness_description, issued_at, pdf_url,
-         doctors ( full_name, specialisation ),
+         doctors ( full_name, specialisation, qualifications, registration_number, department ),
+         appointments (
+           hospital_id,
+           appointment_slots ( slot_start ),
+           hospitals ( name, city )
+         ),
          prescription_items (
            id, prescription_id, medicine_id,
            dosage, frequency, duration, doctor_comment,
