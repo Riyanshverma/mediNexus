@@ -15,7 +15,18 @@ import {
   listDoctorSlots,
   createDoctorSlots,
   deleteDoctorSlot,
+  generateDoctorSlots,
+  blockDoctorSlot,
+  unblockDoctorSlot,
+  markDoctorLeave,
 } from '../controllers/doctor/slots.controller.js';
+import {
+  searchMedicines,
+  createPrescription,
+  listDoctorPrescriptions,
+  getDoctorPrescription,
+} from '../controllers/doctor/prescriptions.controller.js';
+import { getPatientPassportForDoctor } from '../controllers/doctor/passport.controller.js';
 
 export const doctorRouter = Router();
 
@@ -38,4 +49,19 @@ doctorRouter.patch(
 // ── Slots ────────────────────────────────────────────────────────────
 doctorRouter.get('/me/slots', listDoctorSlots);
 doctorRouter.post('/me/slots', validate(createSlotsSchema), createDoctorSlots);
+doctorRouter.post('/me/slots/generate', generateDoctorSlots);
+doctorRouter.patch('/me/slots/:slotId/block', blockDoctorSlot);
+doctorRouter.patch('/me/slots/:slotId/unblock', unblockDoctorSlot);
 doctorRouter.delete('/me/slots/:slotId', deleteDoctorSlot);
+
+// ── Leave ────────────────────────────────────────────────────────────
+doctorRouter.post('/me/leave', markDoctorLeave);
+
+// ── Medicines & Prescriptions ────────────────────────────────────────
+doctorRouter.get('/me/medicines/search', searchMedicines);
+doctorRouter.get('/me/prescriptions', listDoctorPrescriptions);
+doctorRouter.get('/me/prescriptions/:id', getDoctorPrescription);
+doctorRouter.post('/me/appointments/:appointmentId/prescriptions', createPrescription);
+
+// ── Patient Health Passport (requires access grant) ──────────────────
+doctorRouter.get('/me/patients/:patientId/passport', getPatientPassportForDoctor);

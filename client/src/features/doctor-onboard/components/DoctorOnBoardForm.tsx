@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { doctorOnboardSchema, type DoctorOnboardType } from '@/validations/auth.validation';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { api } from '@/lib/api';
 
 export default function DoctorOnBoardForm() {
   const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm({
@@ -23,13 +24,31 @@ export default function DoctorOnBoardForm() {
 
   const onSubmit = async (data: DoctorOnboardType) => {
     try {
-      console.log('Doctor Onboarding Data:', data);
-      // await doctorService.onboard(data);
-      toast.success("Doctor onboarded successfully!");
+      // Map form fields to the fields accepted by PATCH /api/doctors/me
+      const full_name = `${data.firstName} ${data.lastName}`.trim();
+      const specialisation = data.specialization;
+      // Store extra info in prescription_template as structured JSON
+      const prescription_template = JSON.stringify({
+        department: data.department,
+        qualifications: data.qualifications,
+        experience_years: data.experienceYears,
+        consultation_fee: data.consultationFee,
+        slot_duration_mins: data.slotDuration,
+        available_from: data.availableFrom,
+        available_to: data.availableTo,
+        bio: data.bio ?? '',
+      });
+
+      await api.patch('/api/doctors/me', {
+        full_name,
+        specialisation,
+        prescription_template,
+      });
+
+      toast.success("Profile setup complete!");
       navigate("/doctor/dashboard");
     } catch (error: any) {
-      console.error(error);
-      // toast.error(error.message);
+      toast.error(error.message ?? 'Failed to save profile');
     }
   };
 

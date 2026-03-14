@@ -10,12 +10,13 @@ interface HeaderProps {
 }
 
 const navigationItems = [
-  { name: 'Dashboard', key: 'home' },
+  { name: 'Overview', key: 'overview' },
+  { name: 'Doctors', key: 'doctors' },
+  { name: 'Services', key: 'services' },
   { name: 'Appointments', key: 'appointments' },
-  { name: 'Health Passport', key: 'passport' },
 ];
 
-export const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
+export const AdminDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
@@ -26,26 +27,29 @@ export const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps)
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* 7xl max-width container as requested */}
       <div className="container mx-auto max-w-7xl px-4 h-16 flex items-center justify-between">
-        
-        {/* Brand Name - Left */}
-        <div 
-          className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80" 
-          onClick={() => setActiveTab('home')}
+
+        {/* Brand */}
+        <div
+          className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80"
+          onClick={() => setActiveTab('overview')}
         >
           <IconHeartbeat className="h-6 w-6 text-primary" />
-          <span className="font-serif text-xl font-light">mediNexus</span>
+          <span className="font-serif text-xl font-light">
+            mediNexus <span className="text-sm font-medium text-muted-foreground ml-1">Admin</span>
+          </span>
         </div>
 
-        {/* Navigation Links - Center */}
+        {/* Nav */}
         <nav className="hidden md:flex flex-1 items-center justify-center gap-2">
           {navigationItems.map((item) => (
             <Button
               key={item.key}
               variant={activeTab === item.key ? "secondary" : "ghost"}
               className={`text-md font-normal transition-colors ${
-                activeTab === item.key ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"
+                activeTab === item.key
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setActiveTab(item.key)}
             >
@@ -54,15 +58,14 @@ export const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps)
           ))}
         </nav>
 
-        {/* Action Buttons - Right */}
+        {/* Actions */}
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" className="rounded-full bg-secondary/50">
             <User className="h-5 w-5 text-foreground" />
           </Button>
-          
-          <Button 
-            variant="outline" 
-            className="font-normal text-md hidden sm:flex border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 transition-colors" 
+          <Button
+            variant="outline"
+            className="font-normal text-md hidden sm:flex border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 transition-colors"
             onClick={handleLogout}
           >
             <LogOut className="mr-2 h-4 w-4" />

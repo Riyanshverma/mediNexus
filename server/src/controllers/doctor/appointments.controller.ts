@@ -189,6 +189,31 @@ export async function updateDoctorAppointmentStatus(
       console.error('[updateDoctorAppointmentStatus] status log insert failed:', logError.message);
     }
 
+    // If marking as no_show, increment patient's no_show_count
+    if (status === 'no_show') {
+      // Fetch patient_id from the updated appointment
+      const { data: apptData } = await supabaseAdmin
+        .from('appointments')
+        .select('patient_id')
+        .eq('id', id)
+        .single();
+
+      if (apptData?.patient_id) {
+        const { data: patientData } = await supabaseAdmin
+          .from('patients')
+          .select('no_show_count')
+          .eq('id', apptData.patient_id)
+          .single();
+
+        if (patientData) {
+          await supabaseAdmin
+            .from('patients')
+            .update({ no_show_count: (patientData.no_show_count ?? 0) + 1 })
+            .eq('id', apptData.patient_id);
+        }
+      }
+    }
+
     sendSuccess(res, { appointment: updated }, 'Appointment status updated');
   } catch (err) {
     next(err);

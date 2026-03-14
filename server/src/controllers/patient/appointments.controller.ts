@@ -186,6 +186,43 @@ export async function cancelPatientAppointment(
       throw new AppError('Failed to cancel appointment', 500);
     }
 
+    // Free the slot back to available
+    const { data: apptFull } = await supabaseAdmin
+      .from('appointments')
+      .select('slot_id')
+      .eq('id', id)
+      .single();
+
+    if (apptFull?.slot_id) {
+      await supabaseAdmin
+        .from('appointment_slots')
+        .update({ status: 'available', locked_by: null, locked_until: null })
+        .eq('id', apptFull.slot_id)
+        .eq('status', 'booked');
+
+      // Notify the first waiting patient on the waitlist (if any)
+      const { data: firstWaiting } = await supabaseAdmin
+        .from('slot_waitlist')
+        .select('id, patient_id')
+        .eq('slot_id', apptFull.slot_id)
+        .eq('status', 'waiting')
+        .order('queued_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (firstWaiting) {
+        const offerExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min window
+        await supabaseAdmin
+          .from('slot_waitlist')
+          .update({
+            status: 'notified',
+            notified_at: new Date().toISOString(),
+            offer_expires_at: offerExpiresAt,
+          })
+          .eq('id', firstWaiting.id);
+      }
+    }
+
     sendSuccess(res, { appointment: updated }, 'Appointment cancelled');
   } catch (err) {
     next(err);

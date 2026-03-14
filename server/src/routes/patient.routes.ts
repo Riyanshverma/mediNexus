@@ -14,6 +14,19 @@ import {
   getPatientPrescription,
 } from '../controllers/patient/prescriptions.controller.js';
 import { listPatientReports } from '../controllers/patient/reports.controller.js';
+import {
+  lockSlot,
+  bookAppointment,
+  releaseSlotLock,
+  joinWaitlist,
+  listPatientWaitlist,
+} from '../controllers/patient/booking.controller.js';
+import { getPatientPassport } from '../controllers/patient/passport.controller.js';
+import {
+  listAccessGrants,
+  createAccessGrant,
+  revokeAccessGrant,
+} from '../controllers/patient/grants.controller.js';
 
 export const patientRouter = Router();
 
@@ -27,7 +40,16 @@ patientRouter.patch('/me', validate(updatePatientProfileSchema), updatePatientPr
 // ── Appointments ─────────────────────────────────────────────────────
 patientRouter.get('/me/appointments', listPatientAppointments);
 patientRouter.get('/me/appointments/:id', getPatientAppointment);
+patientRouter.post('/me/appointments', bookAppointment);
 patientRouter.patch('/me/appointments/:id/cancel', cancelPatientAppointment);
+
+// ── Slot Booking (soft-lock) ──────────────────────────────────────────
+patientRouter.post('/me/slots/lock', lockSlot);
+patientRouter.patch('/me/slots/:slotId/release', releaseSlotLock);
+
+// ── Waitlist ──────────────────────────────────────────────────────────
+patientRouter.get('/me/waitlist', listPatientWaitlist);
+patientRouter.post('/me/waitlist', joinWaitlist);
 
 // ── Prescriptions ────────────────────────────────────────────────────
 patientRouter.get('/me/prescriptions', listPatientPrescriptions);
@@ -35,3 +57,11 @@ patientRouter.get('/me/prescriptions/:id', getPatientPrescription);
 
 // ── Reports ──────────────────────────────────────────────────────────
 patientRouter.get('/me/reports', listPatientReports);
+
+// ── Health Passport ───────────────────────────────────────────────────
+patientRouter.get('/me/passport', getPatientPassport);
+
+// ── Record Access Grants ──────────────────────────────────────────────
+patientRouter.get('/me/grants', listAccessGrants);
+patientRouter.post('/me/grants', createAccessGrant);
+patientRouter.delete('/me/grants/:grantId', revokeAccessGrant);

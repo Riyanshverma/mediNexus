@@ -5,6 +5,16 @@ import { AppError, NotFoundError, BadRequestError } from '../../utils/errors.js'
 import { requireDoctor } from '../../utils/lookup.js';
 import type { CreateSlotsBody } from '../../validators/doctor/slot.validator.js';
 
+// ─── Types ───────────────────────────────────────────────────────────
+
+interface GenerateSlotsBody {
+  working_days: number[];   // 0=Sun … 6=Sat
+  start_time: string;       // HH:MM
+  end_time: string;         // HH:MM
+  slot_duration_mins: number;
+  days_ahead?: number;      // default 30
+}
+
 /**
  * GET /api/doctors/me/slots?upcoming=true
  * Default: upcoming=true (only future available slots).
@@ -138,6 +148,269 @@ export async function deleteDoctorSlot(
     }
 
     sendSuccess(res, null, 'Slot deleted');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/doctors/me/slots/generate
+ * Generates appointment slots for the next N days (default 30) based on
+ * the doctor's working schedule using a server-side loop.
+ */
+export async function generateDoctorSlots(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const doctor = await requireDoctor(userId);
+    const {
+      working_days,
+      start_time,
+      end_time,
+      slot_duration_mins,
+      days_ahead = 30,
+    } = req.body as GenerateSlotsBody;
+
+    if (!working_days || !Array.isArray(working_days) || working_days.length === 0) {
+      throw new BadRequestError('working_days must be a non-empty array (0=Sun, 6=Sat)');
+    }
+    if (!start_time || !end_time) {
+      throw new BadRequestError('start_time and end_time are required (HH:MM format)');
+    }
+    if (!slot_duration_mins || slot_duration_mins < 5 || slot_duration_mins > 120) {
+      throw new BadRequestError('slot_duration_mins must be between 5 and 120');
+    }
+
+    const slotsToInsert: {
+      doctor_id: string;
+      slot_start: string;
+      slot_end: string;
+      status: 'available';
+    }[] = [];
+
+    const now = new Date();
+
+    for (let i = 0; i <= days_ahead; i++) {
+      const date = new Date(now);
+      date.setDate(now.getDate() + i);
+      date.setHours(0, 0, 0, 0);
+
+      const dayOfWeek = date.getDay(); // 0=Sun … 6=Sat
+      if (!working_days.includes(dayOfWeek)) continue;
+
+      const [startHour, startMin] = start_time.split(':').map(Number);
+      const [endHour, endMin] = end_time.split(':').map(Number);
+
+      const slotStart = new Date(date);
+      slotStart.setHours(startHour, startMin, 0, 0);
+
+      const slotEnd = new Date(date);
+      slotEnd.setHours(endHour, endMin, 0, 0);
+
+      let current = new Date(slotStart);
+      while (current < slotEnd) {
+        const next = new Date(current.getTime() + slot_duration_mins * 60 * 1000);
+        if (next > slotEnd) break;
+
+        slotsToInsert.push({
+          doctor_id: doctor.id,
+          slot_start: current.toISOString(),
+          slot_end: next.toISOString(),
+          status: 'available',
+        });
+
+        current = next;
+      }
+    }
+
+    if (slotsToInsert.length === 0) {
+      sendSuccess(res, { generated: 0 }, 'No slots to generate for given schedule', 200);
+      return;
+    }
+
+    // Insert in chunks of 100 to avoid request size limits
+    const CHUNK = 100;
+    let totalInserted = 0;
+    for (let i = 0; i < slotsToInsert.length; i += CHUNK) {
+      const chunk = slotsToInsert.slice(i, i + CHUNK);
+      const { data, error } = await supabaseAdmin
+        .from('appointment_slots')
+        .upsert(chunk, { onConflict: 'doctor_id,slot_start', ignoreDuplicates: true })
+        .select('id');
+
+      if (error) {
+        console.error('[generateDoctorSlots] upsert failed:', error.message);
+        throw new AppError('Failed to generate slots', 500);
+      }
+      totalInserted += data?.length ?? 0;
+    }
+
+    sendSuccess(
+      res,
+      { generated: totalInserted, attempted: slotsToInsert.length },
+      `${totalInserted} slot(s) generated`,
+      201
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PATCH /api/doctors/me/slots/:slotId/block
+ * Marks a single slot as 'blocked'.
+ */
+export async function blockDoctorSlot(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const doctor = await requireDoctor(userId);
+    const { slotId } = req.params as { slotId: string };
+
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('appointment_slots')
+      .select('id, doctor_id, status')
+      .eq('id', slotId)
+      .eq('doctor_id', doctor.id)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new NotFoundError('Slot not found');
+    }
+
+    if (existing.status === 'booked') {
+      throw new BadRequestError('Cannot block a slot that is already booked');
+    }
+
+    if (existing.status === 'blocked') {
+      throw new BadRequestError('Slot is already blocked');
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('appointment_slots')
+      .update({ status: 'blocked' as any })
+      .eq('id', slotId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new AppError('Failed to block slot', 500);
+    }
+
+    sendSuccess(res, { slot: data }, 'Slot blocked');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PATCH /api/doctors/me/slots/:slotId/unblock
+ * Marks a single slot back to 'available'.
+ */
+export async function unblockDoctorSlot(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const doctor = await requireDoctor(userId);
+    const { slotId } = req.params as { slotId: string };
+
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from('appointment_slots')
+      .select('id, doctor_id, status')
+      .eq('id', slotId)
+      .eq('doctor_id', doctor.id)
+      .single();
+
+    if (fetchError || !existing) {
+      throw new NotFoundError('Slot not found');
+    }
+
+    if (existing.status !== 'blocked') {
+      throw new BadRequestError(`Cannot unblock a slot with status: ${existing.status}`);
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('appointment_slots')
+      .update({ status: 'available' })
+      .eq('id', slotId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new AppError('Failed to unblock slot', 500);
+    }
+
+    sendSuccess(res, { slot: data }, 'Slot unblocked');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/doctors/me/leave
+ * Blocks all available slots on a specified date.
+ */
+export async function markDoctorLeave(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const doctor = await requireDoctor(userId);
+    const { leave_date } = req.body as { leave_date: string }; // YYYY-MM-DD
+
+    if (!leave_date || !/^\d{4}-\d{2}-\d{2}$/.test(leave_date)) {
+      throw new BadRequestError('leave_date must be in YYYY-MM-DD format');
+    }
+
+    // Fetch all available slots on that date for this doctor
+    const { data: availableSlots, error: fetchError } = await supabaseAdmin
+      .from('appointment_slots')
+      .select('id')
+      .eq('doctor_id', doctor.id)
+      .gte('slot_start', `${leave_date}T00:00:00.000Z`)
+      .lt('slot_start', `${leave_date}T23:59:59.999Z`)
+      .eq('status', 'available');
+
+    if (fetchError) {
+      throw new AppError('Failed to fetch slots', 500);
+    }
+
+    if (!availableSlots || availableSlots.length === 0) {
+      sendSuccess(res, { blocked: 0 }, 'No available slots to block on this date', 200);
+      return;
+    }
+
+    const slotIds = availableSlots.map((s) => s.id);
+
+    const { error: updateError } = await supabaseAdmin
+      .from('appointment_slots')
+      .update({ status: 'blocked' as any })
+      .in('id', slotIds);
+
+    if (updateError) {
+      throw new AppError('Failed to mark leave day', 500);
+    }
+
+    sendSuccess(res, { blocked: slotIds.length }, `${slotIds.length} slot(s) blocked for leave day`);
   } catch (err) {
     next(err);
   }

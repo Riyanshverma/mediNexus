@@ -18,13 +18,13 @@ export const PatientDashboard = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
-        return <PatientHome />;
+        return <PatientHome setActiveTab={setActiveTab} />;
       case 'appointments':
         return <PatientAppointments />;
       case 'passport':
         return <PatientHealthPassport />;
       default:
-        return <PatientHome />;
+        return <PatientHome setActiveTab={setActiveTab} />;
     }
   };
 
