@@ -7,7 +7,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { doctorService, type MedicineResult } from '@/services/doctor.service';
-import { searchMockMedicines } from '@/data/mockMedicines';
 
 // ─── Draggable Medicine Card ─────────────────────────────────────────────────
 
@@ -73,16 +72,10 @@ const DraggableMedicineCard = ({ medicine }: DraggableMedicineCardProps) => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Run a search: try the API first; fall back to mock data if API returns nothing. */
+/** Search medicines from the API */
 async function runSearch(q: string): Promise<MedicineResult[]> {
-  try {
-    const res = await doctorService.searchMedicines(q);
-    const apiResults: MedicineResult[] = (res as any).data?.medicines ?? [];
-    if (apiResults.length > 0) return apiResults;
-  } catch {
-    // API unreachable — fall through to mock
-  }
-  return searchMockMedicines(q);
+  const res = await doctorService.searchMedicines(q);
+  return (res as any).data?.medicines ?? [];
 }
 
 /** Extract the most meaningful keyword(s) from an illness description for auto-search. */
