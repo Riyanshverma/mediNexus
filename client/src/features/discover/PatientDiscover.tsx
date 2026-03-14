@@ -10,6 +10,7 @@ import {
   Stethoscope,
   CheckCircle2,
   X,
+  Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { patientService } from '@/services/patient.service';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
+import { useSlotStream, type SlotUpdatePayload } from '@/hooks/useSlotStream';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,7 +33,7 @@ interface DiscoverHospital {
   state: string;
   is_approved: boolean;
   has_slots_today: boolean;
-  hospital_services?: { service_name: string; department: string }[];
+  hospital_services?: { id: string; service_name: string; department: string }[];
   doctors?: { id: string; full_name: string; specialisation: string; verified: boolean }[];
 }
 
@@ -73,6 +75,72 @@ const PatientDiscover = () => {
   const [booking, setBooking] = useState(false);
   const [bookedAppt, setBookedAppt] = useState<any>(null);
 
+  // ── Real-time slot stream ──
+  // `streamConnected` is purely cosmetic — shows a live indicator badge.
+  const [streamConnected, setStreamConnected] = useState(false);
+
+  // Active doctor + date being watched (empty strings = stream paused)
+  const streamDoctorId = step === 'slots' && selectedDoctor ? selectedDoctor.id : '';
+  const streamDate     = step === 'slots' ? (slotDate || format(new Date(), 'yyyy-MM-dd')) : '';
+
+  useSlotStream(streamDoctorId, streamDate, (payload: SlotUpdatePayload) => {
+    setStreamConnected(true); // at least one event received = definitely live
+
+    setSlots((prev) => {
+      if (payload.event === 'DELETE') {
+        // Row hard-deleted — remove it
+        return prev.filter((s) => s.id !== payload.slot.id);
+      }
+
+      if (payload.event === 'INSERT') {
+        // New slot created — add if available and not already present
+        if (payload.slot.status !== 'available') return prev;
+        if (prev.some((s) => s.id === payload.slot.id)) return prev;
+        const newSlot: Slot = {
+          id: payload.slot.id,
+          doctor_id: payload.slot.doctor_id,
+          slot_start: payload.slot.slot_start,
+          slot_end: payload.slot.slot_end,
+          status: payload.slot.status,
+        };
+        return [...prev, newSlot].sort(
+          (a, b) => new Date(a.slot_start).getTime() - new Date(b.slot_start).getTime()
+        );
+      }
+
+      // UPDATE — most common path
+      const { id, status } = payload.slot;
+
+      if (status !== 'available') {
+        // Slot is now booked / locked / cancelled — remove from grid
+        // Also clear the selection if the user had picked this slot
+        if (selectedSlot?.id === id) {
+          setSelectedSlot(null);
+          setLockedUntil(null);
+          toast.warning('The slot you selected was just taken. Please choose another.');
+        }
+        return prev.filter((s) => s.id !== id);
+      }
+
+      // Status flipped back to available (e.g. lock expired, booking cancelled)
+      const existing = prev.find((s) => s.id === id);
+      if (existing) {
+        return prev.map((s) => (s.id === id ? { ...s, status } : s));
+      }
+      // Slot re-appeared — add it back
+      const restored: Slot = {
+        id: payload.slot.id,
+        doctor_id: payload.slot.doctor_id,
+        slot_start: payload.slot.slot_start,
+        slot_end: payload.slot.slot_end,
+        status: payload.slot.status,
+      };
+      return [...prev, restored].sort(
+        (a, b) => new Date(a.slot_start).getTime() - new Date(b.slot_start).getTime()
+      );
+    });
+  });
+
   // ── Search ──
   const doSearch = useCallback(() => {
     setSearchLoading(true);
@@ -111,6 +179,7 @@ const PatientDiscover = () => {
     setSelectedDoctor(doc);
     setSelectedSlot(null);
     setSlots([]);
+    setStreamConnected(false);
     setStep('slots');
     const date = slotDate || format(new Date(), 'yyyy-MM-dd');
     setSlotsLoading(true);
@@ -128,6 +197,7 @@ const PatientDiscover = () => {
     if (!selectedDoctor) return;
     setSlotsLoading(true);
     setSelectedSlot(null);
+    setStreamConnected(false);
     try {
       const res = await patientService.getDoctorSlots(selectedDoctor.id, date);
       setSlots((res as any).data?.slots ?? []);
@@ -162,10 +232,18 @@ const PatientDiscover = () => {
     if (!selectedSlot || !selectedDoctor || !selectedHospital) return;
     setBooking(true);
     try {
+      // Best-effort: find a matching hospital service for the doctor's specialisation
+      const services = hospitalDetail?.hospital_services ?? selectedHospital.hospital_services ?? [];
+      const matchedService = services.find(
+        (s) => s.department?.toLowerCase().includes(selectedDoctor.specialisation?.toLowerCase())
+          || selectedDoctor.specialisation?.toLowerCase().includes(s.department?.toLowerCase())
+      ) ?? services[0] ?? null;
+
       const res = await patientService.bookAppointment({
         slot_id: selectedSlot.id,
         doctor_id: selectedDoctor.id,
         hospital_id: selectedHospital.id,
+        ...(matchedService ? { service_id: matchedService.id } : {}),
         booking_type: 'online',
       });
       setBookedAppt((res as any).data?.appointment ?? null);
@@ -187,6 +265,7 @@ const PatientDiscover = () => {
     setLockedUntil(null);
     setBookedAppt(null);
     setSlots([]);
+    setStreamConnected(false);
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -414,7 +493,16 @@ const PatientDiscover = () => {
         {step === 'slots' && selectedDoctor && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <div>
-              <h1 className="text-3xl font-light tracking-tight">{selectedDoctor.full_name}</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-3xl font-light tracking-tight">{selectedDoctor.full_name}</h1>
+                {/* Live indicator — shown once the SSE stream delivers its first event */}
+                {streamConnected && (
+                  <span className="inline-flex items-center gap-1.5 text-xs bg-green-500/10 text-green-600 rounded-full px-2.5 py-1 font-medium">
+                    <Radio className="h-3 w-3 animate-pulse" />
+                    Live
+                  </span>
+                )}
+              </div>
               <p className="text-muted-foreground text-sm mt-1">
                 {selectedDoctor.specialisation} · {selectedHospital?.name}
               </p>
@@ -453,7 +541,12 @@ const PatientDiscover = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">{slots.length} slot{slots.length !== 1 ? 's' : ''} available</p>
+                <p className="text-sm text-muted-foreground">
+                  {slots.length} slot{slots.length !== 1 ? 's' : ''} available
+                  {streamConnected && (
+                    <span className="ml-2 text-green-600">· updating live</span>
+                  )}
+                </p>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {slots.map(slot => {
                     const isSelected = selectedSlot?.id === slot.id;

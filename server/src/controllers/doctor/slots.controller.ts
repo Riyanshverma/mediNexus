@@ -298,7 +298,7 @@ export async function blockDoctorSlot(
 
     const { data, error } = await supabaseAdmin
       .from('appointment_slots')
-      .update({ status: 'blocked' as any })
+      .update({ status: 'blocked' })
       .eq('id', slotId)
       .select()
       .single();
@@ -403,7 +403,7 @@ export async function markDoctorLeave(
 
     const { error: updateError } = await supabaseAdmin
       .from('appointment_slots')
-      .update({ status: 'blocked' as any })
+      .update({ status: 'blocked' })
       .in('id', slotIds);
 
     if (updateError) {

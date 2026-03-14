@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, NotFoundError, BadRequestError, ConflictError } from '../../utils/errors.js';
 import { requirePatient } from '../../utils/lookup.js';
+import { notifyAllWaiting } from '../../jobs/waitlistQueue.js';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export async function lockSlot(
       .from('appointment_slots')
       .update({
         status: 'locked' as any,
-        locked_by: patient.id,
+        locked_by: userId,
         locked_until: lockedUntil,
       })
       .eq('id', slot_id)
@@ -122,7 +123,7 @@ export async function bookAppointment(
       throw new NotFoundError('Slot not found');
     }
 
-    if (slot.status !== 'locked' || slot.locked_by !== patient.id) {
+    if (slot.status !== 'locked' || slot.locked_by !== userId) {
       throw new ConflictError(
         'Slot lock not held by you. Please re-select and lock the slot first.'
       );
@@ -130,6 +131,30 @@ export async function bookAppointment(
 
     if (slot.locked_until && new Date(slot.locked_until) < new Date()) {
       throw new AppError('Slot lock has expired. Please select the slot again.', 410);
+    }
+
+    // Auto-resolve service_id if not provided by the client:
+    // Look for a hospital_services row matching the doctor's specialisation.
+    let resolvedServiceId: string | null = service_id ?? null;
+    if (!resolvedServiceId) {
+      const { data: doctor } = await supabaseAdmin
+        .from('doctors')
+        .select('specialisation')
+        .eq('id', doctor_id)
+        .single();
+
+      if (doctor?.specialisation) {
+        const { data: svc } = await supabaseAdmin
+          .from('hospital_services')
+          .select('id')
+          .eq('hospital_id', hospital_id)
+          .eq('is_available', true)
+          .ilike('department', `%${doctor.specialisation}%`)
+          .limit(1)
+          .maybeSingle();
+
+        resolvedServiceId = svc?.id ?? null;
+      }
     }
 
     // Create the appointment record
@@ -140,7 +165,7 @@ export async function bookAppointment(
         patient_id: patient.id,
         doctor_id,
         hospital_id,
-        service_id: service_id ?? null as any,
+        ...(resolvedServiceId ? { service_id: resolvedServiceId } : {}),
         booking_type,
         status: 'booked',
       })
@@ -186,7 +211,6 @@ export async function releaseSlotLock(
     const userId = req.user?.id;
     if (!userId) throw new AppError('Authenticated user not found', 401);
 
-    const patient = await requirePatient(userId);
     const { slotId } = req.params as { slotId: string };
 
     const { data, error } = await supabaseAdmin
@@ -194,7 +218,7 @@ export async function releaseSlotLock(
       .update({ status: 'available', locked_by: null, locked_until: null })
       .eq('id', slotId)
       .eq('status', 'locked')
-      .eq('locked_by', patient.id)
+      .eq('locked_by', userId)
       .select()
       .maybeSingle();
 
@@ -245,7 +269,7 @@ export async function joinWaitlist(
       .select('id, status')
       .eq('slot_id', slot_id)
       .eq('patient_id', patient.id)
-      .in('status', ['waiting', 'offered'])
+      .in('status', ['waiting', 'notified'])
       .maybeSingle();
 
     if (existing) {
@@ -300,7 +324,7 @@ export async function listPatientWaitlist(
          )`
       )
       .eq('patient_id', patient.id)
-      .in('status', ['waiting', 'offered'])
+      .in('status', ['waiting', 'notified'])
       .order('queued_at', { ascending: true });
 
     if (error) {
@@ -309,6 +333,210 @@ export async function listPatientWaitlist(
     }
 
     sendSuccess(res, { waitlist: data ?? [] }, 'Waitlist retrieved');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PATCH /api/patients/me/waitlist/:entryId/accept
+ *
+ * Atomically accepts a waitlist offer. The UPDATE is guarded by
+ * status = 'notified' — only one concurrent request can win.
+ * On success the slot is soft-locked for 3 minutes so the patient
+ * can proceed through the normal lock → book confirmation flow.
+ */
+export async function acceptWaitlistOffer(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const patient = await requirePatient(userId);
+    const { entryId } = req.params as { entryId: string };
+
+    // Fetch the waitlist entry — must belong to this patient
+    const { data: entry, error: fetchError } = await supabaseAdmin
+      .from('slot_waitlist')
+      .select('id, slot_id, patient_id, status, offer_expires_at')
+      .eq('id', entryId)
+      .eq('patient_id', patient.id)
+      .single();
+
+    if (fetchError || !entry) {
+      throw new NotFoundError('Waitlist entry not found');
+    }
+
+    if (entry.status !== 'notified') {
+      throw new ConflictError(
+        entry.status === 'accepted'
+          ? 'You have already accepted this offer'
+          : 'This offer is no longer active'
+      );
+    }
+
+    if (entry.offer_expires_at && new Date(entry.offer_expires_at) < new Date()) {
+      throw new AppError('This offer has expired. You may rejoin the waitlist.', 410);
+    }
+
+    // ── Atomic accept: guard on status = 'notified' ──────────────────────────
+    // If two requests race, only the first UPDATE matches — the second gets 0 rows.
+    const { data: accepted, error: acceptError } = await supabaseAdmin
+      .from('slot_waitlist')
+      .update({ status: 'accepted' })
+      .eq('id', entryId)
+      .eq('status', 'notified')  // <-- concurrency guard
+      .select('id, slot_id')
+      .maybeSingle();
+
+    if (acceptError) {
+      throw new AppError('Failed to accept offer', 500);
+    }
+
+    if (!accepted) {
+      // Another request won the race — entry is no longer 'notified'
+      throw new ConflictError('This offer is no longer available. Please rejoin the waitlist.');
+    }
+
+    // Lock the slot for 3 minutes so the patient can confirm booking
+    const lockedUntil = new Date(Date.now() + 3 * 60 * 1000).toISOString();
+
+    const { data: slot, error: lockError } = await supabaseAdmin
+      .from('appointment_slots')
+      .update({
+        status: 'locked',
+        locked_by: userId,
+        locked_until: lockedUntil,
+      })
+      .eq('id', entry.slot_id)
+      .eq('status', 'available')  // only lock if still available
+      .select('id, slot_start, slot_end, doctor_id, status, locked_until')
+      .maybeSingle();
+
+    if (lockError) {
+      throw new AppError('Failed to lock slot after accepting offer', 500);
+    }
+
+    if (!slot) {
+      // Slot was re-taken between the cancel and this accept (very rare edge case).
+      // Revert the accept so the patient stays in queue.
+      await supabaseAdmin
+        .from('slot_waitlist')
+        .update({ status: 'notified' })
+        .eq('id', entryId);
+
+      throw new ConflictError('The slot was taken by someone else. Your offer remains active.');
+    }
+
+    sendSuccess(
+      res,
+      { slot, locked_until: lockedUntil },
+      'Offer accepted. You have 3 minutes to confirm your booking.'
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * PATCH /api/patients/me/waitlist/:entryId/decline
+ *
+ * Patient explicitly declines their offer. The entry is marked 'cancelled'
+ * and the next person in the queue is promoted.
+ */
+export async function declineWaitlistOffer(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const patient = await requirePatient(userId);
+    const { entryId } = req.params as { entryId: string };
+
+    const { data: entry, error: fetchError } = await supabaseAdmin
+      .from('slot_waitlist')
+      .select('id, slot_id, patient_id, status')
+      .eq('id', entryId)
+      .eq('patient_id', patient.id)
+      .single();
+
+    if (fetchError || !entry) {
+      throw new NotFoundError('Waitlist entry not found');
+    }
+
+    if (!['waiting', 'notified'].includes(entry.status)) {
+      throw new BadRequestError(`Cannot decline an entry with status: ${entry.status}`);
+    }
+
+    await supabaseAdmin
+      .from('slot_waitlist')
+      .update({ status: 'cancelled' })
+      .eq('id', entryId);
+
+    // If this patient had an active offer, notify remaining waiting patients
+    if (entry.status === 'notified') {
+      const { data: slot } = await supabaseAdmin
+        .from('appointment_slots')
+        .select('status')
+        .eq('id', entry.slot_id)
+        .single();
+
+      if (slot?.status === 'available') {
+        await notifyAllWaiting(entry.slot_id);
+      }
+    }
+
+    sendSuccess(res, null, 'Removed from waitlist');
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * DELETE /api/patients/me/waitlist/:entryId
+ *
+ * Leave the waitlist entirely (while still in 'waiting' status,
+ * before an offer has been issued).
+ */
+export async function leaveWaitlist(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const patient = await requirePatient(userId);
+    const { entryId } = req.params as { entryId: string };
+
+    const { data: entry, error: fetchError } = await supabaseAdmin
+      .from('slot_waitlist')
+      .select('id, status, patient_id')
+      .eq('id', entryId)
+      .eq('patient_id', patient.id)
+      .single();
+
+    if (fetchError || !entry) {
+      throw new NotFoundError('Waitlist entry not found');
+    }
+
+    if (!['waiting', 'notified'].includes(entry.status)) {
+      throw new BadRequestError(`Cannot leave waitlist with status: ${entry.status}`);
+    }
+
+    await supabaseAdmin
+      .from('slot_waitlist')
+      .update({ status: 'cancelled' })
+      .eq('id', entryId);
+
+    sendSuccess(res, null, 'Left the waitlist');
   } catch (err) {
     next(err);
   }

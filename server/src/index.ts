@@ -1,6 +1,7 @@
 import app from './app.js';
 import { env } from './config/env.js';
 import { startSlotLockCleanupJob } from './jobs/slotLockCleanup.js';
+import { startWaitlistQueueJob } from './jobs/waitlistQueue.js';
 
 const PORT = env.PORT;
 
@@ -11,6 +12,7 @@ const server = app.listen(PORT, () => {
 
   // Start background jobs
   startSlotLockCleanupJob();
+  startWaitlistQueueJob();
 });
 
 server.on('error', (err: NodeJS.ErrnoException) => {

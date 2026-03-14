@@ -12,6 +12,7 @@ interface HeaderProps {
 const navigationItems = [
   { name: 'Dashboard', key: 'home' },
   { name: 'Appointments', key: 'appointments' },
+  { name: 'Waitlist', key: 'waitlist' },
   { name: 'Health Passport', key: 'passport' },
 ];
 

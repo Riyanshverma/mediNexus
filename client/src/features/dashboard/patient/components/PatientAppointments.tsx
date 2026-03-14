@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Calendar, Clock, Loader2, X, UserPlus } from 'lucide-react';
+import { Calendar, Clock, Loader2, X, UserPlus, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { patientService, type PatientAppointment } from '@/services/patient.service';
 import { format, parseISO } from 'date-fns';
@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const CANCELLABLE = ['booked', 'checked_in'];
 
-export const PatientAppointments = () => {
+export const PatientAppointments = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }) => {
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [appointments, setAppointments] = useState<PatientAppointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,19 +70,32 @@ export const PatientAppointments = () => {
     <div className="p-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-light tracking-tight">My Appointments</h1>
-        {/* Filter tabs */}
-        <div className="flex items-center gap-1 bg-secondary/50 rounded-lg p-1">
-          {(['upcoming', 'past', 'all'] as Filter[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 text-sm rounded-md transition-colors capitalize ${
-                filter === f ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-              }`}
+        <div className="flex items-center gap-2">
+          {setActiveTab && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => setActiveTab('waitlist')}
             >
-              {f}
-            </button>
-          ))}
+              <ListChecks className="h-4 w-4 mr-1.5" />
+              My Waitlist
+            </Button>
+          )}
+          {/* Filter tabs */}
+          <div className="flex items-center gap-1 bg-secondary/50 rounded-lg p-1">
+            {(['upcoming', 'past', 'all'] as Filter[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1.5 text-sm rounded-md transition-colors capitalize ${
+                  filter === f ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -130,6 +143,20 @@ export const PatientAppointments = () => {
                   >
                     {cancelling === appt.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
                     Cancel
+                  </Button>
+                )}
+                {appt.status === 'cancelled' && appt.slot_id && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-primary border-primary/30 hover:bg-primary/10"
+                    disabled={joiningWaitlist === appt.slot_id}
+                    onClick={() => handleJoinWaitlist(appt.slot_id)}
+                  >
+                    {joiningWaitlist === appt.slot_id
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <UserPlus className="h-4 w-4 mr-1" />}
+                    Join Waitlist
                   </Button>
                 )}
               </div>

@@ -4,6 +4,7 @@ import { sendSuccess } from '../../utils/response.js';
 import { AppError, NotFoundError, BadRequestError } from '../../utils/errors.js';
 import { requirePatient } from '../../utils/lookup.js';
 import type { AppointmentStatus } from '../../models/database.types.js';
+import { notifyAllWaiting } from '../../jobs/waitlistQueue.js';
 
 // ─── Local join-result shapes ────────────────────────────────────────
 // Supabase Relationships are empty so we cast manually.
@@ -87,7 +88,10 @@ export async function listPatientAppointments(
     const filtered =
       filter === 'upcoming'
         ? appointments.filter(
-            (a) => a.appointment_slots && a.appointment_slots.slot_start > now
+            (a) =>
+              a.appointment_slots &&
+              a.appointment_slots.slot_start > now &&
+              ['booked', 'checked_in', 'in_progress'].includes(a.status)
           )
         : filter === 'past'
         ? appointments.filter(
@@ -200,27 +204,8 @@ export async function cancelPatientAppointment(
         .eq('id', apptFull.slot_id)
         .eq('status', 'booked');
 
-      // Notify the first waiting patient on the waitlist (if any)
-      const { data: firstWaiting } = await supabaseAdmin
-        .from('slot_waitlist')
-        .select('id, patient_id')
-        .eq('slot_id', apptFull.slot_id)
-        .eq('status', 'waiting')
-        .order('queued_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (firstWaiting) {
-        const offerExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min window
-        await supabaseAdmin
-          .from('slot_waitlist')
-          .update({
-            status: 'notified',
-            notified_at: new Date().toISOString(),
-            offer_expires_at: offerExpiresAt,
-          })
-          .eq('id', firstWaiting.id);
-      }
+      // Notify ALL waiting patients — first to accept wins the slot
+      await notifyAllWaiting(apptFull.slot_id);
     }
 
     sendSuccess(res, { appointment: updated }, 'Appointment cancelled');

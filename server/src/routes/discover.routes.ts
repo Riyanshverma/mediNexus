@@ -4,6 +4,7 @@ import {
   getHospitalDetails,
   getDoctorSlots,
 } from '../controllers/patient/discovery.controller.js';
+import { streamDoctorSlots } from '../controllers/sse/slots.controller.js';
 
 export const discoverRouter = Router();
 
@@ -11,3 +12,7 @@ export const discoverRouter = Router();
 discoverRouter.get('/hospitals', discoverHospitals);
 discoverRouter.get('/hospitals/:hospitalId', getHospitalDetails);
 discoverRouter.get('/doctors/:doctorId/slots', getDoctorSlots);
+
+// SSE — real-time slot availability stream for a doctor on a given date.
+// Must be declared BEFORE the generic /slots route so Express does not shadow it.
+discoverRouter.get('/doctors/:doctorId/slots/stream', streamDoctorSlots);

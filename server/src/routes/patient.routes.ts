@@ -20,6 +20,9 @@ import {
   releaseSlotLock,
   joinWaitlist,
   listPatientWaitlist,
+  acceptWaitlistOffer,
+  declineWaitlistOffer,
+  leaveWaitlist,
 } from '../controllers/patient/booking.controller.js';
 import { getPatientPassport } from '../controllers/patient/passport.controller.js';
 import {
@@ -50,6 +53,9 @@ patientRouter.patch('/me/slots/:slotId/release', releaseSlotLock);
 // ── Waitlist ──────────────────────────────────────────────────────────
 patientRouter.get('/me/waitlist', listPatientWaitlist);
 patientRouter.post('/me/waitlist', joinWaitlist);
+patientRouter.patch('/me/waitlist/:entryId/accept', acceptWaitlistOffer);
+patientRouter.patch('/me/waitlist/:entryId/decline', declineWaitlistOffer);
+patientRouter.delete('/me/waitlist/:entryId', leaveWaitlist);
 
 // ── Prescriptions ────────────────────────────────────────────────────
 patientRouter.get('/me/prescriptions', listPatientPrescriptions);

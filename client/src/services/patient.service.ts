@@ -133,6 +133,19 @@ export const patientService = {
   listWaitlist: () =>
     api.get<{ data: { waitlist: WaitlistEntry[] } }>('/api/patients/me/waitlist'),
 
+  acceptOffer: (entryId: string) =>
+    api.patch<{ data: { slot: any; locked_until: string } }>(
+      `/api/patients/me/waitlist/${entryId}/accept`
+    ),
+
+  declineOffer: (entryId: string) =>
+    api.patch<{ data: null }>(
+      `/api/patients/me/waitlist/${entryId}/decline`
+    ),
+
+  leaveWaitlist: (entryId: string) =>
+    api.delete<{ data: null }>(`/api/patients/me/waitlist/${entryId}`),
+
   // Health passport
   getPassport: () =>
     api.get<{ data: PatientPassport }>('/api/patients/me/passport'),

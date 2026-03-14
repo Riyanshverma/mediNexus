@@ -1,6 +1,6 @@
 // ─── Enums ──────────────────────────────────────────────────────────
 
-export type SlotStatus = 'available' | 'booked' | 'locked' | 'cancelled';
+export type SlotStatus = 'available' | 'booked' | 'locked' | 'cancelled' | 'blocked';
 
 export type AppointmentStatus =
   | 'booked'
@@ -12,7 +12,7 @@ export type AppointmentStatus =
 
 export type BookingType = 'online' | 'walk_in' | 'referral';
 
-export type WaitlistStatus = 'waiting' | 'notified' | 'accepted' | 'expired' | 'cancelled';
+export type WaitlistStatus = 'waiting' | 'notified' | 'offered' | 'accepted' | 'expired' | 'cancelled';
 
 export type ReportType = 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
 
@@ -98,7 +98,7 @@ export interface Appointment {
   patient_id: string;
   doctor_id: string;
   hospital_id: string;
-  service_id: string;
+  service_id: string | null;
   booking_type: BookingType;
   status: AppointmentStatus;
   notes: string | null;
@@ -414,7 +414,7 @@ export type Database = {
           patient_id: string;
           doctor_id: string;
           hospital_id: string;
-          service_id: string;
+          service_id: string | null;
           booking_type: BookingType;
           status: AppointmentStatus;
           notes: string | null;
@@ -426,7 +426,7 @@ export type Database = {
           patient_id: string;
           doctor_id: string;
           hospital_id: string;
-          service_id: string;
+          service_id?: string | null;
           booking_type: BookingType;
           status: AppointmentStatus;
           notes?: string | null;
