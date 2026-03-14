@@ -11,7 +11,7 @@ import {DoctorPrescriptions} from "./doctor/components/DoctorPrescriptions";
 import { DoctorDashboardHeader } from "./doctor/components/DoctorDashboardHeader";
 import { DoctorReferrals } from "./doctor/components/DoctorReferrals";
 
-export { PatientDashboardHeader, PatientHome, PatientAppointments, PatientHealthPassport, WaitlistPanel, DoctorQueue, DoctorSchedule, DoctorPrescriptions, DoctorDashboardHeader, DoctorReferrals };
+export { PatientDashboardHeader, PatientHome, PatientAppointments, PatientHealthPassport, WaitlistPanel, PatientProfilePage, DoctorQueue, DoctorSchedule, DoctorPrescriptions, DoctorDashboardHeader, DoctorReferrals };
 
 
 // Pages
