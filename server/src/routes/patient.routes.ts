@@ -32,6 +32,7 @@ import {
   revokeAllGrantsForDoctor,
 } from '../controllers/patient/grants.controller.js';
 import { streamPatientWaitlist } from '../controllers/sse/waitlist.controller.js';
+import { patientAIChat } from '../controllers/patient/aiChat.controller.js';
 
 export const patientRouter = Router();
 
@@ -76,3 +77,6 @@ patientRouter.get('/me/grants', listAccessGrants);
 patientRouter.post('/me/grants', createAccessGrant);
 patientRouter.delete('/me/grants/doctor/:doctorId', revokeAllGrantsForDoctor);
 patientRouter.delete('/me/grants/:grantId', revokeAccessGrant);
+
+// ── AI Health Assistant ───────────────────────────────────────────────
+patientRouter.post('/me/ai-chat', patientAIChat);

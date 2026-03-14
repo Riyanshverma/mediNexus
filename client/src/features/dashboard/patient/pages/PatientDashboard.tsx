@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments, WaitlistPanel, PatientProfilePage } from '../..';
+import { PatientAIChat } from '../components/PatientAIChat';
 import { useWaitlistStream, type WaitlistUpdatePayload } from '@/hooks/useWaitlistStream';
 
 export const PatientDashboard = () => {
@@ -61,6 +62,7 @@ export const PatientDashboard = () => {
       <main className="w-full max-w-7xl mx-auto">
         {renderContent()}
       </main>
+      <PatientAIChat />
     </div>
   );
 };

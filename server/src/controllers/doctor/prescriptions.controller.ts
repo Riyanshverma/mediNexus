@@ -234,7 +234,7 @@ Rules:
       throw new AppError('AI service returned an error', 502);
     }
 
-    const openRouterData = await openRouterRes.json();
+    const openRouterData = await openRouterRes.json() as any;
     const rawContent: string = openRouterData?.choices?.[0]?.message?.content ?? '{}';
 
     let insights: AIInsightsResponse;

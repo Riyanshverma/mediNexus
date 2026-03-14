@@ -159,6 +159,11 @@ export interface DocumentSelection {
   document_id: string;
 }
 
+export interface AIChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const patientService = {
@@ -301,4 +306,8 @@ export const patientService = {
 
   cancelServiceAppointment: (appointmentId: string) =>
     api.patch<{ data: { success: boolean } }>(`/api/services/me/appointments/${appointmentId}/cancel`),
+
+  // AI Health Assistant
+  aiChat: (payload: { message: string; history: AIChatMessage[] }) =>
+    api.post<{ data: { reply: string } }>('/api/patients/me/ai-chat', payload),
 };
