@@ -23,7 +23,7 @@ const DoctorOnBoardPage = () => {
       
       {/* Right Portion */}
       <div className="p-8 h-full flex flex-col py-6 overflow-y-auto">
-        <div className="mx-auto flex w-full flex-col justify-center space-y-8 sm:w-[550px] mt-6 mb-12">
+        <div className="mx-auto flex w-full flex-col justify-center space-y-8 sm:w-137.5 mt-6 mb-12">
           
           <div className="flex flex-col space-y-2 text-center md:text-left">
             <h1 className="text-4xl font-light tracking-tight">

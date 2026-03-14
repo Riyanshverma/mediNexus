@@ -2,9 +2,9 @@ import { useState } from "react";
 import { IconHeartbeat, IconArrowLeft } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import LoginForm from "../components/LoginForm";
 import { useNavigate } from "react-router-dom";
 import { type LoginRole as Role } from "@/types";
+import { LoginForm } from "..";
 
 const LoginPage = () => {
   const navigate = useNavigate(); 

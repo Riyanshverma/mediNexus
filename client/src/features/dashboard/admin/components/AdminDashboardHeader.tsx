@@ -9,32 +9,31 @@ interface HeaderProps {
 }
 
 const navigationItems = [
-  { name: 'Dashboard', key: 'home' },
-  { name: 'Appointments', key: 'appointments' },
-  { name: 'Health Passport', key: 'passport' },
+  { name: 'Overview', key: 'overview' },
+  { name: 'Doctors', key: 'doctors' },
+  { name: 'Services', key: 'services' },
+  { name: 'Generate Slots', key: 'slots' },
 ];
 
-export const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
+export const AdminDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    // Add your auth logout logic here (e.g., Supabase logout, clear Redux/Zustand store)
-    // toast.success("Logged out successfully");
+    // Add your auth logout logic here
     navigate('/login');
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
-      {/* 7xl max-width container as requested */}
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto max-w-7xl px-4 h-16 flex items-center justify-between">
         
         {/* Brand Name - Left */}
         <div 
           className="flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-80" 
-          onClick={() => setActiveTab('home')}
+          onClick={() => setActiveTab('overview')}
         >
           <IconHeartbeat className="h-6 w-6 text-primary" />
-          <span className="font-serif text-xl font-light">mediNexus</span>
+          <span className="font-serif text-xl font-light">mediNexus <span className="text-sm font-medium text-muted-foreground ml-1">Admin</span></span>
         </div>
 
         {/* Navigation Links - Center */}
