@@ -1,1 +1,15 @@
-// This will import all the services from the patient, doc and appointment folders and re-export them for easier access
+export { authService } from './auth.service';
+export type {
+  AuthUser,
+  AuthSession,
+  UserRole,
+  LoginPayload,
+  RegisterPatientPayload,
+  RegisterHospitalAdminPayload,
+  DoctorSetupPayload,
+  LoginResponse,
+  RegisterResponse,
+  MeResponse,
+  LogoutResponse,
+  RefreshResponse,
+} from './auth.service';
