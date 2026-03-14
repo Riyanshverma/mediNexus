@@ -411,6 +411,9 @@ export const PrescriptionWriter = ({ onCancel, onSuccess }: PrescriptionWriterPr
               <MedicineSearchPanel
                 illnessDescription={illnessDescription}
                 onIllnessDescriptionChange={setIllnessDescription}
+                rxItems={rxItems}
+                patientAllergies={patientInfo.known_allergies}
+                patientBloodGroup={patientInfo.blood_group}
               />
             </div>
 

@@ -101,6 +101,32 @@ export interface MedicineResult {
   side_effects: string | null;
 }
 
+export interface AIInsightSuggestion {
+  medicine_name: string;
+  therapeutic_class: string | null;
+  reason: string;
+  co_prescription_count: number;
+}
+
+export interface AIInteraction {
+  medicines: string[];
+  warning: string;
+  severity: 'low' | 'medium' | 'high';
+}
+
+export interface AIAllergyWarning {
+  medicine: string;
+  allergen: string;
+  warning: string;
+}
+
+export interface AIInsights {
+  suggestions: AIInsightSuggestion[];
+  interactions: AIInteraction[];
+  allergyWarnings: AIAllergyWarning[];
+  disclaimer: string;
+}
+
 export interface CreatePrescriptionPayload {
   illness_description?: string;
   items: {
@@ -230,6 +256,18 @@ export const doctorService = {
   createPrescription: (appointmentId: string, payload: CreatePrescriptionPayload) =>
     api.post<{ data: { prescription: Prescription } }>(
       `/api/doctors/me/appointments/${appointmentId}/prescriptions`,
+      payload
+    ),
+
+  // AI Insights
+  getAIInsights: (payload: {
+    illnessDescription: string;
+    currentMedicineIds: string[];
+    patientAllergies?: string | null;
+    patientBloodGroup?: string | null;
+  }) =>
+    api.post<{ data: { insights: AIInsights } }>(
+      '/api/doctors/me/prescriptions/ai-insights',
       payload
     ),
 

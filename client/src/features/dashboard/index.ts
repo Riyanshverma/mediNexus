@@ -10,8 +10,9 @@ import {DoctorSchedule} from "./doctor/components/DoctorSchedule";
 import {DoctorPrescriptions} from "./doctor/components/DoctorPrescriptions";
 import { DoctorDashboardHeader } from "./doctor/components/DoctorDashboardHeader";
 import { DoctorReferrals } from "./doctor/components/DoctorReferrals";
+import { DoctorProfilePage } from "./doctor/components/DoctorProfilePage";
 
-export { PatientDashboardHeader, PatientHome, PatientAppointments, PatientHealthPassport, WaitlistPanel, PatientProfilePage, DoctorQueue, DoctorSchedule, DoctorPrescriptions, DoctorDashboardHeader, DoctorReferrals };
+export { PatientDashboardHeader, PatientHome, PatientAppointments, PatientHealthPassport, WaitlistPanel, PatientProfilePage, DoctorQueue, DoctorSchedule, DoctorPrescriptions, DoctorDashboardHeader, DoctorReferrals, DoctorProfilePage };
 
 
 // Pages

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { DoctorDashboardHeader, DoctorQueue, DoctorSchedule, DoctorPrescriptions, DoctorReferrals } from '../..';
+import { DoctorDashboardHeader, DoctorQueue, DoctorSchedule, DoctorPrescriptions, DoctorReferrals, DoctorProfilePage } from '../..';
 
 export const DoctorDashboard = () => {
   const location = useLocation();
@@ -24,6 +24,8 @@ export const DoctorDashboard = () => {
         return <DoctorPrescriptions />;
       case 'referrals':
         return <DoctorReferrals />;
+      case 'profile':
+        return <DoctorProfilePage />;
       default:
         return <DoctorQueue />;
     }

@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { doctorService, type MedicineResult } from '@/services/doctor.service';
+import { AIInsightsPanel } from './AIInsightsPanel';
+import type { RxItem } from './RxPad';
 
 // ─── Draggable Medicine Card ─────────────────────────────────────────────────
 
@@ -99,11 +101,17 @@ function extractSearchQuery(description: string): string {
 interface MedicineSearchPanelProps {
   illnessDescription: string;
   onIllnessDescriptionChange: (val: string) => void;
+  rxItems: RxItem[];
+  patientAllergies: string | null;
+  patientBloodGroup: string | null;
 }
 
 export const MedicineSearchPanel = ({
   illnessDescription,
   onIllnessDescriptionChange,
+  rxItems,
+  patientAllergies,
+  patientBloodGroup,
 }: MedicineSearchPanelProps) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<MedicineResult[]>([]);
@@ -197,6 +205,18 @@ export const MedicineSearchPanel = ({
           </p>
         )}
       </div>
+
+      {/* AI Insights Panel — inline, below diagnosis, above search */}
+      <AIInsightsPanel
+        illnessDescription={illnessDescription}
+        rxItems={rxItems}
+        patientAllergies={patientAllergies}
+        patientBloodGroup={patientBloodGroup}
+        onAddSuggestion={(medicineName) => {
+          // Pre-fill the search box with the suggested medicine name
+          handleSearch(medicineName);
+        }}
+      />
 
       {/* Search input */}
       <div className="px-5 pt-4 pb-3 flex-shrink-0">

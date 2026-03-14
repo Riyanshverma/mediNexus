@@ -25,6 +25,7 @@ import {
   createPrescription,
   listDoctorPrescriptions,
   getDoctorPrescription,
+  getAIInsights,
 } from '../controllers/doctor/prescriptions.controller.js';
 import { getPatientPassportForDoctor } from '../controllers/doctor/passport.controller.js';
 import {
@@ -69,6 +70,7 @@ doctorRouter.get('/me/medicines/search', searchMedicines);
 doctorRouter.get('/me/prescriptions', listDoctorPrescriptions);
 doctorRouter.get('/me/prescriptions/:id', getDoctorPrescription);
 doctorRouter.post('/me/appointments/:appointmentId/prescriptions', createPrescription);
+doctorRouter.post('/me/prescriptions/ai-insights', getAIInsights);
 
 // ── Patient Health Passport (requires access grant) ──────────────────
 doctorRouter.get('/me/patients/:patientId/passport', getPatientPassportForDoctor);

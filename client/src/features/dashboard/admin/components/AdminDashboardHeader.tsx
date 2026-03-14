@@ -62,7 +62,7 @@ export const AdminDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) =
 
         {/* Actions */}
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="rounded-full bg-secondary/50">
+          <Button variant="ghost" size="icon" className="rounded-full bg-secondary/50" onClick={() => setActiveTab('profile')}>
             <User className="h-5 w-5 text-foreground" />
           </Button>
           <Button

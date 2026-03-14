@@ -6,6 +6,7 @@ import { AdminDoctors } from '../components/AdminDoctors';
 import { AdminServices } from '../components/AdminServices';
 import { AdminAppointments } from '../components/AdminAppointments';
 import { AdminServiceSlots } from '../components/AdminServiceSlots';
+import { AdminProfilePage } from '../components/AdminProfilePage';
 
 const AdminDashboard = () => {
   const location = useLocation();
@@ -30,6 +31,8 @@ const AdminDashboard = () => {
         return <AdminServiceSlots />;
       case 'appointments':
         return <AdminAppointments />;
+      case 'profile':
+        return <AdminProfilePage />;
       default:
         return <AdminOverview setActiveTab={setActiveTab} />;
     }
