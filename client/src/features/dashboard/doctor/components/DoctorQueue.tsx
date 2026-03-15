@@ -1,5 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Clock,
   Loader2,
@@ -18,11 +17,16 @@ import {
   Droplets,
   AlertTriangle,
   ArrowRightLeft,
+  Search,
+  Send,
+  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { doctorService, type DoctorAppointment } from '@/services/doctor.service';
-import { format, parseISO, isToday, differenceInYears, addDays, subDays, isSameDay } from 'date-fns';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { doctorService, type DoctorAppointment, type DoctorSearchResult } from '@/services/doctor.service';
+import { format, parseISO, isToday, differenceInYears, addDays, subDays, isSameDay } from 'date-fns';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -289,15 +293,37 @@ interface PassportSheetProps {
   onClose: () => void;
   patientId: string | null;
   patientName: string;
-  onRefer?: (patient: { id: string; full_name: string }) => void;
 }
 
-function HealthPassportSheet({ open, onClose, patientId, patientName, onRefer }: PassportSheetProps) {
+function HealthPassportSheet({ open, onClose, patientId, patientName }: PassportSheetProps) {
   const [passport, setPassport] = useState<PassportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rxOpen, setRxOpen] = useState(false);
   const [selectedRx, setSelectedRx] = useState<PassportPrescription | null>(null);
+
+  // ── Inline referral state ──
+  const [referView, setReferView] = useState(false);
+  const [doctorQuery, setDoctorQuery] = useState('');
+  const [doctorResults, setDoctorResults] = useState<DoctorSearchResult[]>([]);
+  const [doctorSearching, setDoctorSearching] = useState(false);
+  const [selectedDoctor, setSelectedDoctor] = useState<DoctorSearchResult | null>(null);
+  const [reason, setReason] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [referralSent, setReferralSent] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reset referral form when sheet closes or patient changes
+  useEffect(() => {
+    if (!open) {
+      setReferView(false);
+      setReferralSent(false);
+      setSelectedDoctor(null);
+      setDoctorQuery('');
+      setDoctorResults([]);
+      setReason('');
+    }
+  }, [open, patientId]);
 
   useEffect(() => {
     if (!open || !patientId) return;
@@ -336,26 +362,66 @@ function HealthPassportSheet({ open, onClose, patientId, patientName, onRefer }:
     [selectedRx, passport]
   );
 
+  // ── Doctor search with debounce ──
+  const handleDoctorSearch = (q: string) => {
+    setDoctorQuery(q);
+    setSelectedDoctor(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (q.trim().length < 2) { setDoctorResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setDoctorSearching(true);
+      try {
+        const res = await doctorService.searchDoctors(q.trim());
+        setDoctorResults((res as any).data?.doctors ?? []);
+      } catch { /* silent */ } finally {
+        setDoctorSearching(false);
+      }
+    }, 300);
+  };
+
+  // ── Submit referral ──
+  const handleSendReferral = async () => {
+    if (!selectedDoctor || !patientId) return;
+    setCreating(true);
+    try {
+      await doctorService.createReferral({
+        patient_id: patientId,
+        referred_to_doctor_id: selectedDoctor.id,
+        reason: reason.trim() || undefined,
+      });
+      setReferralSent(true);
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to send referral');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <>
       <Sheet open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0 gap-0">
+        <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0 gap-0" showCloseButton={false}>
           <SheetHeader className="flex flex-row items-center justify-between px-5 py-4 border-b shrink-0 gap-0">
             <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-              <SheetTitle className="text-sm font-medium leading-none">Health Passport</SheetTitle>
+              {referView ? (
+                <Button size="icon" variant="ghost" className="h-7 w-7 mr-1" onClick={() => { setReferView(false); setReferralSent(false); }}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              ) : (
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+              )}
+              <SheetTitle className="text-sm font-medium leading-none">
+                {referView ? `Refer ${patientName}` : 'Health Passport'}
+              </SheetTitle>
             </div>
             <div className="flex items-center gap-1">
-              <p className="text-xs text-muted-foreground mr-2">{patientName}</p>
-              {onRefer && patientId && (
+              {!referView && <p className="text-xs text-muted-foreground mr-2">{patientName}</p>}
+              {!referView && patientId && (
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-7 text-xs mr-1"
-                  onClick={() => {
-                    onClose();
-                    onRefer({ id: patientId, full_name: patientName });
-                  }}
+                  onClick={() => setReferView(true)}
                 >
                   <ArrowRightLeft className="h-3.5 w-3.5 mr-1" />
                   Refer
@@ -368,53 +434,177 @@ function HealthPassportSheet({ open, onClose, patientId, patientName, onRefer }:
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto min-h-0">
-            {loading && (
-              <div className="flex items-center justify-center py-24">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {error && !loading && (
-              <div className="flex flex-col items-center justify-center py-24 px-6 text-center gap-3">
-                <ShieldAlert className="h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">{error}</p>
-              </div>
-            )}
-            {passport && !loading && (
-              <div className="p-5 space-y-5">
-                <PatientProfileCard patient={passport.patient} />
-                <Tabs defaultValue="prescriptions">
-                  <TabsList className="w-full">
-                    <TabsTrigger value="prescriptions" className="flex-1 text-xs">
-                      <Pill className="h-3.5 w-3.5 mr-1.5" />
-                      Prescriptions
-                      {passport.prescriptions.length > 0 && (
-                        <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
-                          {passport.prescriptions.length}
-                        </Badge>
+            {/* ── Inline referral view ── */}
+            {referView ? (
+              <div className="p-5 space-y-5 animate-in fade-in duration-200">
+                {referralSent ? (
+                  // ── Success state ──
+                  <div className="flex flex-col items-center justify-center py-16 gap-4 text-center">
+                    <div className="h-14 w-14 rounded-full bg-green-500/10 flex items-center justify-center">
+                      <CheckCircle2 className="h-8 w-8 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-base">Referral sent!</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {patientName} has been referred to Dr. {selectedDoctor?.full_name}.
+                      </p>
+                      {selectedDoctor?.specialisation && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{selectedDoctor.specialisation}</p>
                       )}
-                    </TabsTrigger>
-                    <TabsTrigger value="reports" className="flex-1 text-xs">
-                      <FileText className="h-3.5 w-3.5 mr-1.5" />
-                      Reports
-                      {passport.reports.length > 0 && (
-                        <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
-                          {passport.reports.length}
-                        </Badge>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => { setReferView(false); setReferralSent(false); }}>
+                      Back to Health Passport
+                    </Button>
+                  </div>
+                ) : (
+                  // ── Referral form ──
+                  <>
+                    {/* Patient (read-only) */}
+                    <div className="space-y-1.5">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Patient</p>
+                      <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2.5">
+                        <User className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-sm font-medium">{patientName}</span>
+                      </div>
+                    </div>
+
+                    {/* Doctor search */}
+                    <div className="space-y-1.5">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Refer to Doctor</p>
+                      {selectedDoctor ? (
+                        <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg p-3">
+                          <div>
+                            <p className="text-sm font-medium">{selectedDoctor.full_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {selectedDoctor.specialisation}
+                              {selectedDoctor.hospitals?.name && ` · ${selectedDoctor.hospitals.name}`}
+                            </p>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedDoctor(null); setDoctorQuery(''); setDoctorResults([]); }}>
+                            Change
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Search by name or specialisation..."
+                            className="pl-9"
+                            value={doctorQuery}
+                            onChange={(e) => handleDoctorSearch(e.target.value)}
+                          />
+                          {doctorSearching && (
+                            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                          )}
+                          {doctorResults.length > 0 && (
+                            <div className="absolute z-10 w-full mt-1 bg-popover border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {doctorResults.map((doc) => (
+                                <button
+                                  key={doc.id}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors text-sm"
+                                  onClick={() => { setSelectedDoctor(doc); setDoctorQuery(''); setDoctorResults([]); }}
+                                >
+                                  <p className="font-medium">{doc.full_name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {doc.specialisation}
+                                    {doc.hospitals?.name && ` · ${doc.hospitals.name}, ${doc.hospitals.city}`}
+                                  </p>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )}
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="prescriptions" className="mt-4">
-                    <PrescriptionsList
-                      prescriptions={passport.prescriptions}
-                      patientName={passport.patient.full_name}
-                      onView={(rx) => { setSelectedRx(rx); setRxOpen(true); }}
-                    />
-                  </TabsContent>
-                  <TabsContent value="reports" className="mt-4">
-                    <ReportsList reports={passport.reports} />
-                  </TabsContent>
-                </Tabs>
+                    </div>
+
+                    {/* Reason */}
+                    <div className="space-y-1.5">
+                      <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Reason <span className="normal-case text-muted-foreground/60">(optional)</span></p>
+                      <Textarea
+                        placeholder="e.g. Patient needs cardiac evaluation following persistent chest pain..."
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        rows={3}
+                      />
+                    </div>
+
+                    {/* Info note */}
+                    <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
+                      Creating a referral automatically copies your document access grants for this patient to the referred doctor.
+                    </p>
+
+                    {/* Actions */}
+                    <div className="flex gap-3">
+                      <Button variant="outline" className="flex-1" onClick={() => setReferView(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        onClick={handleSendReferral}
+                        disabled={!selectedDoctor || creating}
+                      >
+                        {creating ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending...</>
+                        ) : (
+                          <><Send className="h-4 w-4 mr-2" />Send Referral</>
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
+            ) : (
+              // ── Normal passport view ──
+              <>
+                {loading && (
+                  <div className="flex items-center justify-center py-24">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                {error && !loading && (
+                  <div className="flex flex-col items-center justify-center py-24 px-6 text-center gap-3">
+                    <ShieldAlert className="h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">{error}</p>
+                  </div>
+                )}
+                {passport && !loading && (
+                  <div className="p-5 space-y-5">
+                    <PatientProfileCard patient={passport.patient} />
+                    <Tabs defaultValue="prescriptions">
+                      <TabsList className="w-full">
+                        <TabsTrigger value="prescriptions" className="flex-1 text-xs">
+                          <Pill className="h-3.5 w-3.5 mr-1.5" />
+                          Prescriptions
+                          {passport.prescriptions.length > 0 && (
+                            <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
+                              {passport.prescriptions.length}
+                            </Badge>
+                          )}
+                        </TabsTrigger>
+                        <TabsTrigger value="reports" className="flex-1 text-xs">
+                          <FileText className="h-3.5 w-3.5 mr-1.5" />
+                          Reports
+                          {passport.reports.length > 0 && (
+                            <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
+                              {passport.reports.length}
+                            </Badge>
+                          )}
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="prescriptions" className="mt-4">
+                        <PrescriptionsList
+                          prescriptions={passport.prescriptions}
+                          patientName={passport.patient.full_name}
+                          onView={(rx) => { setSelectedRx(rx); setRxOpen(true); }}
+                        />
+                      </TabsContent>
+                      <TabsContent value="reports" className="mt-4">
+                        <ReportsList reports={passport.reports} />
+                      </TabsContent>
+                    </Tabs>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </SheetContent>
@@ -584,8 +774,6 @@ function AppointmentCard({ appt, position, updating, onStatusChange, onOpenPassp
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const DoctorQueue = () => {
-  const navigate = useNavigate();
-
   // All appointments fetched once
   const [allAppointments, setAllAppointments] = useState<DoctorAppointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -646,10 +834,6 @@ export const DoctorQueue = () => {
   const handleOpenPassport = (appt: DoctorAppointment) => {
     setPassportPatient({ id: appt.patient_id, name: appt.patients?.full_name ?? 'Patient' });
     setPassportOpen(true);
-  };
-
-  const handleRefer = (patient: { id: string; full_name: string }) => {
-    navigate('/doctor', { state: { tab: 'referrals', preselectedPatient: patient } });
   };
 
   // Dates that have appointments — used for "dot" indicators
@@ -779,7 +963,6 @@ export const DoctorQueue = () => {
         onClose={() => setPassportOpen(false)}
         patientId={passportPatient?.id ?? null}
         patientName={passportPatient?.name ?? ''}
-        onRefer={handleRefer}
       />
     </>
   );

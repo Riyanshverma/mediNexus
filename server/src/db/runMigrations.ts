@@ -6,6 +6,9 @@
  * Only runs when DATABASE_URL is set.  Failures are logged but do NOT crash the
  * server — the app can still start; only the features that depend on missing
  * schema will be broken.
+ *
+ * After applying migrations, sends `NOTIFY pgrst, 'reload schema'` so that
+ * Supabase's PostgREST layer picks up new tables/columns immediately.
  */
 
 import pg from 'pg';
@@ -72,6 +75,8 @@ export async function runMigrations(): Promise<void> {
 
   const pool = new Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
 
+  let anyApplied = false;
+
   try {
     // Ensure tracking table exists
     await pool.query(`
@@ -88,8 +93,19 @@ export async function runMigrations(): Promise<void> {
       );
 
       if (rows.length > 0) {
-        console.log(`[migrations] ${migration.id} — already applied, skipping.`);
-        continue;
+        // Migration recorded as applied — but verify the referrals table actually exists
+        // (handles the case where PostgREST schema cache was stale on a previous run)
+        const { rows: tableCheck } = await pool.query(
+          `SELECT to_regclass('public.referrals') AS tbl`
+        );
+        const tableExists = tableCheck[0]?.tbl != null;
+        if (tableExists) {
+          console.log(`[migrations] ${migration.id} — already applied, skipping.`);
+          continue;
+        }
+        // Table missing despite being recorded — re-apply and notify PostgREST
+        console.log(`[migrations] ${migration.id} — recorded but table missing, re-applying...`);
+        await pool.query(`DELETE FROM schema_migrations WHERE id = $1`, [migration.id]);
       }
 
       console.log(`[migrations] Applying ${migration.id}...`);
@@ -104,11 +120,24 @@ export async function runMigrations(): Promise<void> {
         );
         await client.query('COMMIT');
         console.log(`[migrations] ${migration.id} — applied successfully.`);
+        anyApplied = true;
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
       } finally {
         client.release();
+      }
+    }
+
+    // After applying new migrations, notify PostgREST to reload its schema cache
+    // so Supabase's REST API immediately recognises new tables/columns.
+    if (anyApplied) {
+      try {
+        await pool.query(`NOTIFY pgrst, 'reload schema'`);
+        console.log('[migrations] PostgREST schema cache reload triggered.');
+      } catch (notifyErr) {
+        // Non-fatal — PostgREST will reload on its own schedule
+        console.warn('[migrations] Could not notify PostgREST to reload schema:', (notifyErr as Error).message);
       }
     }
   } catch (err) {

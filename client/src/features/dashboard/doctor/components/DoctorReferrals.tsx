@@ -78,11 +78,16 @@ export const DoctorReferrals = ({ preselectedPatient, onPreselectedConsumed }: D
     } catch (err: any) {
       const msg: string = err?.message ?? '';
       // Graceful fallback when the referrals table hasn't been migrated yet
-      if (msg.toLowerCase().includes('relation') || msg.toLowerCase().includes('does not exist')) {
+      if (
+        msg.toLowerCase().includes('relation') ||
+        msg.toLowerCase().includes('does not exist') ||
+        msg.toLowerCase().includes('schema cache') ||
+        msg.toLowerCase().includes("could not find the table")
+      ) {
         setReferrals([]);
         toast.error('Referrals table not yet set up — restart the server to apply migrations.');
       } else {
-        toast.error(msg || 'Failed to load referrals');
+        toast.error(msg || 'Failed to fetch referrals');
       }
     } finally {
       setLoading(false);
