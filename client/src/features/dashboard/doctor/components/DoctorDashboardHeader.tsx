@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { IconHeartbeat } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { LogOut, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { doctorService } from "@/services/doctor.service";
 
 // 1. Define the props interface
 interface HeaderProps {
@@ -11,14 +13,42 @@ interface HeaderProps {
 }
 
 const navigationItems = [
-  { name: 'Queue', key: 'queue' },
+  { name: 'Appointments', key: 'queue' },
   { name: 'Schedule', key: 'schedule' },
   { name: 'Prescriptions', key: 'prescriptions' },
+  { name: 'Referrals', key: 'referrals' },
 ];
 
 export const DoctorDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const [pendingReferrals, setPendingReferrals] = useState(0);
+
+  // Poll for pending received referrals to show badge
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPending = async () => {
+      try {
+        const res = await doctorService.listReferrals();
+        if (cancelled) return;
+        const referrals: any[] = (res as any).data?.referrals ?? [];
+        const count = referrals.filter(
+          (r) => r.direction === 'received' && r.status === 'pending'
+        ).length;
+        setPendingReferrals(count);
+      } catch {
+        // silent — badge is non-critical
+      }
+    };
+
+    fetchPending();
+    // Refresh every 60 s
+    const interval = setInterval(fetchPending, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -44,12 +74,17 @@ export const DoctorDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) 
             <Button
               key={item.key}
               variant={activeTab === item.key ? "secondary" : "ghost"}
-              className={`text-md font-normal transition-colors ${
+              className={`text-md font-normal transition-colors relative ${
                 activeTab === item.key ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setActiveTab(item.key)}
             >
               {item.name}
+              {item.key === 'referrals' && pendingReferrals > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+                  {pendingReferrals}
+                </span>
+              )}
             </Button>
           ))}
         </nav>

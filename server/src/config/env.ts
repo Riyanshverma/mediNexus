@@ -11,6 +11,7 @@ interface EnvConfig {
   SUPABASE_SERVICE_ROLE_KEY: string;
   SUPABASE_ANON_KEY: string;
   FRONTEND_URL: string;
+  DATABASE_URL: string | undefined;
 }
 
 function getEnvVar(key: string, fallback?: string): string {
@@ -21,6 +22,10 @@ function getEnvVar(key: string, fallback?: string): string {
   return value;
 }
 
+function getOptionalEnvVar(key: string): string | undefined {
+  return process.env[key];
+}
+
 export const env: EnvConfig = {
   PORT: parseInt(getEnvVar('PORT', '5000'), 10),
   NODE_ENV: getEnvVar('NODE_ENV', 'development'),
@@ -28,4 +33,5 @@ export const env: EnvConfig = {
   SUPABASE_SERVICE_ROLE_KEY: getEnvVar('SUPABASE_SERVICE_ROLE_KEY'),
   SUPABASE_ANON_KEY: getEnvVar('SUPABASE_ANON_KEY'),
   FRONTEND_URL: getEnvVar('FRONTEND_URL', 'http://localhost:5173'),
+  DATABASE_URL: getOptionalEnvVar('DATABASE_URL'),
 };

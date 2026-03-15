@@ -6,7 +6,6 @@ import PublicOnlyRoute from '@/components/PublicOnlyRoute';
 import { LandingPage } from '@/features/landing';
 import { LoginPage, SignupPage, DoctorSetupPage } from '@/features/authentication';
 import { PatientDashboard, AdminDashboard, DoctorDashboard } from '@/features/dashboard';
-import { DoctorOnBoardPage } from '@/features/doctor-onboard';
 import PatientDiscover from '@/features/discover/PatientDiscover';
 import PatientServiceBooking from '@/features/discover/PatientServiceBooking';
 

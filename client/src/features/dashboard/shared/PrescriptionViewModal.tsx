@@ -12,6 +12,8 @@ import {
   PrescriptionPDFDocument,
   type PDFPrescriptionData,
 } from './PrescriptionPDFDocument';
+
+export type { PDFPrescriptionData };
 import { format, parseISO, differenceInYears } from 'date-fns';
 
 // ─── Types ───────────────────────────────────────────────────────────────────

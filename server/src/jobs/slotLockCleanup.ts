@@ -3,37 +3,46 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { notifyNextWaiting } from './waitlistQueue.js';
 
 /**
- * Releases expired slot locks every 10 seconds.
+ * Releases expired slot locks every 10 seconds for BOTH appointment_slots and service_slots.
  *
  * Slots with status='locked' and locked_until < NOW() are reset to 'available'.
- * After freeing each slot, the waitlist queue is immediately notified so waiting
- * patients receive their offer without waiting for the next waitlist cron tick.
+ * After freeing each appointment_slot, the waitlist queue is immediately notified.
  */
 export function startSlotLockCleanupJob(): void {
   cron.schedule('*/10 * * * * *', async () => {
     const now = new Date().toISOString();
 
-    const { data, error } = await supabaseAdmin
+    // ── 1. Doctor appointment slots ──
+    const { data: apptData, error: apptError } = await supabaseAdmin
       .from('appointment_slots')
       .update({ status: 'available', locked_by: null, locked_until: null })
       .eq('status', 'locked')
       .lt('locked_until', now)
       .select('id');
 
-    if (error) {
-      console.error('[slotLockCleanup] Failed to release expired locks:', error.message);
-      return;
+    if (apptError) {
+      console.error('[slotLockCleanup] Failed to release expired appointment locks:', apptError.message);
+    } else if (apptData && apptData.length > 0) {
+      console.log(`[slotLockCleanup] Released ${apptData.length} expired appointment slot lock(s)`);
+      for (const { id: slotId } of apptData) {
+        await notifyNextWaiting(slotId);
+      }
     }
 
-    if (!data || data.length === 0) return;
+    // ── 2. Service slots ──
+    const { data: svcData, error: svcError } = await supabaseAdmin
+      .from('service_slots')
+      .update({ status: 'available', locked_by: null, locked_until: null })
+      .eq('status', 'locked')
+      .lt('locked_until', now)
+      .select('id');
 
-    console.log(`[slotLockCleanup] Released ${data.length} expired slot lock(s)`);
-
-    // Immediately notify the next waiting patient — don't wait for the waitlist cron.
-    for (const { id: slotId } of data) {
-      await notifyNextWaiting(slotId);
+    if (svcError) {
+      console.error('[slotLockCleanup] Failed to release expired service slot locks:', svcError.message);
+    } else if (svcData && svcData.length > 0) {
+      console.log(`[slotLockCleanup] Released ${svcData.length} expired service slot lock(s)`);
     }
   });
 
-  console.log('[slotLockCleanup] Slot lock cleanup job scheduled (every 10s)');
+  console.log('[slotLockCleanup] Slot lock cleanup job scheduled (every 10s) — appointment + service slots');
 }

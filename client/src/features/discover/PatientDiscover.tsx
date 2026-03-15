@@ -23,12 +23,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { IconHeartbeat } from '@tabler/icons-react';
-import { useAuth } from '@/context/AuthContext';
-import { patientService, type PatientPrescription, type PatientReport, type DocumentSelection } from '@/services/patient.service';
+import { patientService, releaseSlotLockBeacon, type PatientPrescription, type PatientReport, type DocumentSelection } from '@/services/patient.service';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { useSlotStream, type SlotUpdatePayload } from '@/hooks/useSlotStream';
-import { dispatchAppointmentBooked } from '@/hooks/useAppointmentRefresh';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +58,6 @@ type Step = 'search' | 'hospital' | 'slots' | 'confirm' | 'grant-access' | 'done
 const PatientDiscover = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
 
   // Search state
   const [query, setQuery] = useState('');
@@ -99,9 +96,17 @@ const PatientDiscover = () => {
 
   // ── Release slot lock on component unmount (user navigates away) ──
   useEffect(() => {
-    return () => {
+    const handleUnload = () => {
       if (selectedSlotRef.current) {
-        patientService.releaseSlotLock(selectedSlotRef.current.id).catch(() => {});
+        releaseSlotLockBeacon(selectedSlotRef.current.id);
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      // Also release on React unmount (SPA navigation)
+      if (selectedSlotRef.current) {
+        releaseSlotLockBeacon(selectedSlotRef.current.id);
       }
     };
   }, []);

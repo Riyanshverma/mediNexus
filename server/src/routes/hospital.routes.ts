@@ -13,6 +13,14 @@ import { listHospitalServices, createHospitalService, updateHospitalService, del
 import { listHospitalAppointments } from '../controllers/hospital/appointments.controller.js';
 import { generateHospitalDoctorSlots } from '../controllers/hospital/slots.controller.js';
 import {
+  listAdminDoctorSlots,
+  adminBlockDoctorSlot,
+  adminUnblockDoctorSlot,
+  adminDeleteDoctorSlot,
+  adminBookWalkIn,
+  adminCancelDoctorAppointment,
+} from '../controllers/hospital/doctorSlots.controller.js';
+import {
   generateServiceSlots,
   listServiceSlots,
   getServiceSlotDetails,
@@ -21,6 +29,7 @@ import {
   getServiceSlotAvailability,
   updateServiceDaySlots,
 } from '../controllers/hospital/serviceSlots.controller.js';
+import { listServiceAppointments, updateServiceAppointmentStatus } from '../controllers/hospital/serviceAppointments.controller.js';
 import {
   uploadReportMiddleware,
   uploadPatientReport,
@@ -51,6 +60,14 @@ hospitalRouter.get('/me/doctors', listHospitalDoctors);
 hospitalRouter.patch('/me/doctors/:doctorId', updateHospitalDoctor);
 hospitalRouter.delete('/me/doctors/:doctorId', deleteHospitalDoctor);
 
+// Doctor slot management (admin) — must be BEFORE /slots/generate to avoid Express path shadowing
+hospitalRouter.get('/me/doctors/:doctorId/slots', listAdminDoctorSlots);
+hospitalRouter.patch('/me/doctors/:doctorId/slots/:slotId/block', adminBlockDoctorSlot);
+hospitalRouter.patch('/me/doctors/:doctorId/slots/:slotId/unblock', adminUnblockDoctorSlot);
+hospitalRouter.delete('/me/doctors/:doctorId/slots/:slotId', adminDeleteDoctorSlot);
+hospitalRouter.post('/me/doctors/:doctorId/walk-in', adminBookWalkIn);
+hospitalRouter.patch('/me/doctors/:doctorId/appointments/:appointmentId/cancel', adminCancelDoctorAppointment);
+
 // Doctor slot generation (admin on behalf of doctor)
 hospitalRouter.post('/me/doctors/:doctorId/slots/generate', generateHospitalDoctorSlots);
 
@@ -62,6 +79,10 @@ hospitalRouter.patch('/me/services/slots/day', validate(updateServiceDaySlotsSch
 hospitalRouter.delete('/me/services/slots/:slotId', deleteServiceSlot);
 hospitalRouter.post('/me/services/slots/bulk-delete', bulkDeleteServiceSlots);
 
+// Service Appointments — must be before /me/services/:serviceId to avoid shadowing
+hospitalRouter.get('/me/services/appointments', listServiceAppointments);
+hospitalRouter.patch('/me/services/appointments/:appointmentId/status', updateServiceAppointmentStatus);
+
 // Services
 hospitalRouter.get('/me/services', listHospitalServices);
 hospitalRouter.post('/me/services', validate(createServiceSchema), createHospitalService);
@@ -69,7 +90,7 @@ hospitalRouter.patch('/me/services/:serviceId', validate(updateServiceSchema), u
 hospitalRouter.delete('/me/services/:serviceId', deleteHospitalService);
 hospitalRouter.get('/me/services/:serviceId/availability', getServiceSlotAvailability);
 
-// Appointments
+// Doctor Appointments
 hospitalRouter.get('/me/appointments', listHospitalAppointments);
 
 // Patient reports — hospital staff upload on behalf of a patient

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, User, Stethoscope, Calendar, Clock, BadgeCheck, BookOpen, IndianRupee } from 'lucide-react';
+import { Loader2, User, Stethoscope, Calendar, Clock, BadgeCheck, BookOpen } from 'lucide-react';
 import { doctorService, type DoctorProfile } from '@/services/doctor.service';
 import { toast } from 'sonner';
 

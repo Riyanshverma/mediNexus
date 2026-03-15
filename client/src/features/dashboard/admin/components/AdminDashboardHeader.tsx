@@ -1,4 +1,4 @@
-import { IconHeartbeat, IconCalendarTime } from "@tabler/icons-react";
+import { IconHeartbeat, IconCalendarTime, IconCalendarStats, IconCalendarUser } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { LogOut, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -14,6 +14,8 @@ const navigationItems = [
   { name: 'Doctors', key: 'doctors' },
   { name: 'Services', key: 'services' },
   { name: 'Service Slots', key: 'service-slots', icon: <IconCalendarTime className="h-4 w-4 mr-1.5" /> },
+  { name: 'Service Bookings', key: 'service-appointments', icon: <IconCalendarStats className="h-4 w-4 mr-1.5" /> },
+  { name: 'Doctor Slots', key: 'doctor-slots', icon: <IconCalendarUser className="h-4 w-4 mr-1.5" /> },
   { name: 'Appointments', key: 'appointments' },
   { name: 'Reports', key: 'reports' },
 ];

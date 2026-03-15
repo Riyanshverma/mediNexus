@@ -226,7 +226,7 @@ export const PatientHealthPassport = () => {
         valid_days: grantValidDays,
         source: 'manual',
       });
-      toast.success(`Shared ${grantSelectedDocs.length} document${grantSelectedDocs.length !== 1 ? 's' : ''} with Dr. ${grantSelectedDoctor.full_name}`);
+      toast.success(`Shared ${grantSelectedDocs.length} document${grantSelectedDocs.length !== 1 ? 's' : ''} with ${grantSelectedDoctor.full_name}`);
       setGrantDialogOpen(false);
       fetchPassport();
     } catch (e: any) {
@@ -268,7 +268,7 @@ export const PatientHealthPassport = () => {
     setRevokingDoctor(doctorId);
     try {
       await patientService.revokeAllGrantsForDoctor(doctorId);
-      toast.success(`All access for Dr. ${doctorName} revoked`);
+      toast.success(`All access for ${doctorName} revoked`);
       fetchPassport();
     } catch (e: any) {
       toast.error(e.message ?? 'Failed to revoke access');
@@ -356,7 +356,7 @@ export const PatientHealthPassport = () => {
                           <p className="font-medium">{rx.illness_description ?? 'Prescription'}</p>
                           <p className="text-sm text-muted-foreground">
                             Issued {format(parseISO(rx.issued_at), 'MMM d, yyyy')}
-                            {(rx as any).doctors ? ` · Dr. ${(rx as any).doctors.full_name}` : ''}
+                            {(rx as any).doctors ? ` · ${(rx as any).doctors.full_name}` : ''}
                           </p>
                         </div>
                         <Button
@@ -566,7 +566,7 @@ export const PatientHealthPassport = () => {
                               <UserRound className="h-5 w-5 text-primary" />
                             </div>
                             <div>
-                              <p className="font-medium">Dr. {group.doctorName}</p>
+                              <p className="font-medium">Dr. {group.doctorName.replace(/^Dr\.\s*/i, '')}</p>
                               <p className="text-sm text-muted-foreground">
                                 {group.specialisation}
                                 {group.hospitalName && (
@@ -631,7 +631,7 @@ export const PatientHealthPassport = () => {
                                         <p className="text-xs text-muted-foreground">
                                           {grant.document_type === 'prescription' ? 'Prescription' : 'Report'}
                                           {docDate && ` · ${format(parseISO(docDate), 'MMM d, yyyy')}`}
-                                          {docAuthor && ` · Dr. ${docAuthor}`}
+                                           {docAuthor && ` · ${docAuthor}`}
                                           {grant.source !== 'manual' && (
                                             <span className="ml-1 text-xs bg-muted rounded px-1 py-0.5 capitalize">
                                               {grant.source}
@@ -683,7 +683,7 @@ export const PatientHealthPassport = () => {
                                   ) : (
                                     <Trash2 className="h-4 w-4 mr-2" />
                                   )}
-                                  Revoke All Access for Dr. {group.doctorName}
+                                   Revoke All Access for Dr. {group.doctorName.replace(/^Dr\.\s*/i, '')}
                                 </Button>
                               </div>
                             )}
@@ -720,9 +720,9 @@ export const PatientHealthPassport = () => {
                           <div className="flex items-center gap-2">
                             <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
                             <p className="font-medium text-sm">
-                              Dr. {referral.referring_doctor?.full_name ?? 'Unknown'}
+                              {referral.referring_doctor?.full_name ?? 'Unknown Doctor'}
                               <span className="text-muted-foreground font-normal mx-2">referred you to</span>
-                              Dr. {referral.referred_to_doctor?.full_name ?? 'Unknown'}
+                              {referral.referred_to_doctor?.full_name ?? 'Unknown Doctor'}
                             </p>
                           </div>
                           <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${statusColor}`}>
@@ -783,7 +783,7 @@ export const PatientHealthPassport = () => {
               {grantSelectedDoctor ? (
                 <div className="flex items-center justify-between bg-primary/5 border rounded-lg px-3 py-2">
                   <div>
-                    <p className="text-sm font-medium">Dr. {grantSelectedDoctor.full_name}</p>
+                    <p className="text-sm font-medium">Dr. {grantSelectedDoctor.full_name.replace(/^Dr\.\s*/i, '')}</p>
                     <p className="text-xs text-muted-foreground">
                       {grantSelectedDoctor.specialisation}
                       {grantSelectedDoctor.hospitals?.name && ` · ${grantSelectedDoctor.hospitals.name}`}
@@ -827,7 +827,7 @@ export const PatientHealthPassport = () => {
                             setGrantDoctorResults([]);
                           }}
                         >
-                          <p className="font-medium">Dr. {doc.full_name}</p>
+                          <p className="font-medium">Dr. {doc.full_name.replace(/^Dr\.\s*/i, '')}</p>
                           <p className="text-xs text-muted-foreground">
                             {doc.specialisation}
                             {doc.hospitals?.name && ` · ${doc.hospitals.name}`}
@@ -870,8 +870,8 @@ export const PatientHealthPassport = () => {
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {format(parseISO(rx.issued_at), 'MMM d, yyyy')}
-                          {(rx as any).doctors ? ` · Dr. ${(rx as any).doctors.full_name}` : ''}
-                        </p>
+                           {(rx as any).doctors ? ` · ${(rx as any).doctors.full_name}` : ''}
+                         </p>
                       </div>
                     </label>
                   ))}

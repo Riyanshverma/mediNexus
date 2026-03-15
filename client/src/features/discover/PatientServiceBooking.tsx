@@ -23,7 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { IconHeartbeat } from '@tabler/icons-react';
-import { patientService } from '@/services/patient.service';
+import { patientService, releaseServiceSlotBeacon } from '@/services/patient.service';
 import { toast } from 'sonner';
 import { format, eachDayOfInterval, addMonths, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 
@@ -116,9 +116,17 @@ const PatientServiceBooking = () => {
 
   // Release service slot lock on component unmount (covers Close button / browser navigation)
   useEffect(() => {
-    return () => {
+    const handleUnload = () => {
       if (selectedSlotRef.current) {
-        patientService.releaseServiceSlot(selectedSlotRef.current.id).catch(() => {});
+        releaseServiceSlotBeacon(selectedSlotRef.current.id);
+      }
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+      // Also release on React unmount (SPA navigation)
+      if (selectedSlotRef.current) {
+        releaseServiceSlotBeacon(selectedSlotRef.current.id);
       }
     };
   }, []);
