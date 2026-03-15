@@ -109,6 +109,13 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
     }
   };
 
+  // `errors` is typed as FieldErrors<PatientSignUpType | HospitalSignUpType>.
+  // TypeScript cannot narrow the union, so we cast to any for field access.
+  // The actual runtime values are always correct because the schema is
+  // selected based on `isPatient` before the form is rendered.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const e = errors as any;
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {isPatient && (
@@ -117,15 +124,15 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
             <div className="space-y-2">
               <Label htmlFor="firstName">First Name</Label>
               <Input id="firstName" placeholder="John" {...register('firstName')} />
-              {errors.firstName && (
-                <p className="text-destructive text-xs">{errors.firstName.message as string}</p>
+              {e.firstName && (
+                <p className="text-destructive text-xs">{e.firstName.message as string}</p>
               )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="lastName">Last Name</Label>
               <Input id="lastName" placeholder="Doe" {...register('lastName')} />
-              {errors.lastName && (
-                <p className="text-destructive text-xs">{errors.lastName.message as string}</p>
+              {e.lastName && (
+                <p className="text-destructive text-xs">{e.lastName.message as string}</p>
               )}
             </div>
           </div>
@@ -138,8 +145,8 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
               placeholder="john@example.com"
               {...register('email')}
             />
-            {errors.email && (
-              <p className="text-destructive text-xs">{errors.email.message as string}</p>
+            {e.email && (
+              <p className="text-destructive text-xs">{e.email.message as string}</p>
             )}
           </div>
 
@@ -153,8 +160,8 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                 placeholder="9876543210"
                 {...register('phone')}
               />
-              {errors.phone && (
-                <p className="text-destructive text-xs">{errors.phone.message as string}</p>
+              {e.phone && (
+                <p className="text-destructive text-xs">{e.phone.message as string}</p>
               )}
             </div>
             <div className="space-y-2">
@@ -177,8 +184,8 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                   </Select>
                 )}
               />
-              {errors.bloodGroup && (
-                <p className="text-destructive text-xs">{errors.bloodGroup.message as string}</p>
+              {e.bloodGroup && (
+                <p className="text-destructive text-xs">{e.bloodGroup.message as string}</p>
               )}
             </div>
           </div>
@@ -218,8 +225,8 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                 </Popover>
               )}
             />
-            {errors.dob && (
-              <p className="text-destructive text-xs">{errors.dob.message as string}</p>
+            {e.dob && (
+              <p className="text-destructive text-xs">{e.dob.message as string}</p>
             )}
           </div>
         </div>
@@ -238,9 +245,9 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                   placeholder="City Care Clinic"
                   {...register('hospitalName')}
                 />
-                {errors.hospitalName && (
+                {e.hospitalName && (
                   <p className="text-destructive text-xs">
-                    {errors.hospitalName.message as string}
+                    {e.hospitalName.message as string}
                   </p>
                 )}
               </div>
@@ -266,9 +273,9 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                     </Select>
                   )}
                 />
-                {errors.hospitalType && (
+                {e.hospitalType && (
                   <p className="text-destructive text-xs">
-                    {errors.hospitalType.message as string}
+                    {e.hospitalType.message as string}
                   </p>
                 )}
               </div>
@@ -276,9 +283,9 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
             <div className="space-y-2">
               <Label>Registration Number</Label>
               <Input placeholder="REG-1234..." {...register('registrationNumber')} />
-              {errors.registrationNumber && (
+              {e.registrationNumber && (
                 <p className="text-destructive text-xs">
-                  {errors.registrationNumber.message as string}
+                  {e.registrationNumber.message as string}
                 </p>
               )}
             </div>
@@ -290,25 +297,25 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
               <div className="space-y-2">
                 <Label>Street / Area</Label>
                 <Input placeholder="Park Avenue" {...register('street')} />
-                {errors.street && (
+                {e.street && (
                   <p className="text-destructive text-xs">
-                    {errors.street.message as string}
+                    {e.street.message as string}
                   </p>
                 )}
               </div>
               <div className="space-y-2">
                 <Label>City</Label>
                 <Input placeholder="New York" {...register('city')} />
-                {errors.city && (
-                  <p className="text-destructive text-xs">{errors.city.message as string}</p>
+                {e.city && (
+                  <p className="text-destructive text-xs">{e.city.message as string}</p>
                 )}
               </div>
               <div className="space-y-2">
                 <Label>State</Label>
                 <Input placeholder="NY" {...register('state')} />
-                {errors.state && (
+                {e.state && (
                   <p className="text-destructive text-xs">
-                    {errors.state.message as string}
+                    {e.state.message as string}
                   </p>
                 )}
               </div>
@@ -316,9 +323,9 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
             <div className="space-y-2 w-1/2 pr-2">
               <Label>Pincode</Label>
               <Input placeholder="100001" maxLength={6} {...register('pincode')} />
-              {errors.pincode && (
+              {e.pincode && (
                 <p className="text-destructive text-xs">
-                  {errors.pincode.message as string}
+                  {e.pincode.message as string}
                 </p>
               )}
             </div>
@@ -331,18 +338,18 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
               <div className="space-y-2">
                 <Label>First Name</Label>
                 <Input placeholder="Jane" {...register('adminFirstName')} />
-                {errors.adminFirstName && (
+                {e.adminFirstName && (
                   <p className="text-destructive text-xs">
-                    {errors.adminFirstName.message as string}
+                    {e.adminFirstName.message as string}
                   </p>
                 )}
               </div>
               <div className="space-y-2">
                 <Label>Last Name</Label>
                 <Input placeholder="Smith" {...register('adminLastName')} />
-                {errors.adminLastName && (
+                {e.adminLastName && (
                   <p className="text-destructive text-xs">
-                    {errors.adminLastName.message as string}
+                    {e.adminLastName.message as string}
                   </p>
                 )}
               </div>
@@ -355,9 +362,9 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                   placeholder="admin@clinic.com"
                   {...register('adminEmail')}
                 />
-                {errors.adminEmail && (
+                {e.adminEmail && (
                   <p className="text-destructive text-xs">
-                    {errors.adminEmail.message as string}
+                    {e.adminEmail.message as string}
                   </p>
                 )}
               </div>
@@ -369,9 +376,9 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                   placeholder="9876543210"
                   {...register('adminPhone')}
                 />
-                {errors.adminPhone && (
+                {e.adminPhone && (
                   <p className="text-destructive text-xs">
-                    {errors.adminPhone.message as string}
+                    {e.adminPhone.message as string}
                   </p>
                 )}
               </div>
@@ -401,8 +408,8 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>
             </div>
-            {errors.password && (
-              <p className="text-destructive text-xs">{errors.password.message as string}</p>
+            {e.password && (
+              <p className="text-destructive text-xs">{e.password.message as string}</p>
             )}
           </div>
           <div className="space-y-2">
@@ -423,9 +430,9 @@ const SignupForm: FunctionComponent<SignupFormProps> = ({ role }) => {
                 {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>
             </div>
-            {errors.confirmPassword && (
+            {e.confirmPassword && (
               <p className="text-destructive text-xs">
-                {errors.confirmPassword.message as string}
+                {e.confirmPassword.message as string}
               </p>
             )}
           </div>
