@@ -10,6 +10,8 @@ import {
   ShieldAlert,
   ExternalLink,
   X,
+  Sparkles,
+  AlertCircle,
   ChevronLeft,
   ChevronRight,
   CalendarDays,
@@ -288,17 +290,41 @@ function ReportsList({ reports }: { reports: PassportReport[] }) {
 
 // ─── Health Passport Sheet ────────────────────────────────────────────────────
 
+// ─── Brief type (mirrors doctor.service return shape) ────────────────────────
+
+interface BriefData {
+  patient_name: string;
+  age: number | null;
+  blood_group: string | null;
+  known_allergies: string | null;
+  active_medications: string[];
+  recent_conditions: string[];
+  recent_findings: string[];
+  focus_areas: string[];
+  narrative: string;
+  generated_at: string;
+  cached?: boolean;
+}
+
 interface PassportSheetProps {
   open: boolean;
   onClose: () => void;
   patientId: string | null;
   patientName: string;
+  appointmentId: string | null;
 }
 
-function HealthPassportSheet({ open, onClose, patientId, patientName }: PassportSheetProps) {
+function HealthPassportSheet({ open, onClose, patientId, patientName, appointmentId }: PassportSheetProps) {
   const [passport, setPassport] = useState<PassportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Brief state
+  const [briefData, setBriefData] = useState<BriefData | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+
+  // For drilling into a single prescription
   const [rxOpen, setRxOpen] = useState(false);
   const [selectedRx, setSelectedRx] = useState<PassportPrescription | null>(null);
 
@@ -328,6 +354,12 @@ function HealthPassportSheet({ open, onClose, patientId, patientName }: Passport
   useEffect(() => {
     if (!open || !patientId) return;
     let cancelled = false;
+
+    // Reset brief when a new sheet opens
+    setBriefData(null);
+    setBriefError(null);
+    setBriefLoading(false);
+
     setLoading(true);
     setError(null);
     setPassport(null);
@@ -349,6 +381,20 @@ function HealthPassportSheet({ open, onClose, patientId, patientName }: Passport
 
     return () => { cancelled = true; };
   }, [open, patientId]);
+
+  const handleGenerateBrief = async () => {
+    if (!appointmentId) return;
+    setBriefLoading(true);
+    setBriefError(null);
+    try {
+      const res = await doctorService.getAppointmentBrief(appointmentId);
+      setBriefData((res as any).data);
+    } catch (e: any) {
+      setBriefError(e?.message ?? 'Failed to generate brief.');
+    } finally {
+      setBriefLoading(false);
+    }
+  };
 
   const fetchPrescriptionData = useCallback(
     async (_id: string) => {
@@ -434,6 +480,190 @@ function HealthPassportSheet({ open, onClose, patientId, patientName }: Passport
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto min-h-0">
+            {loading && (
+              <div className="flex items-center justify-center py-24">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {error && !loading && (
+              <div className="flex flex-col items-center justify-center py-24 px-6 text-center gap-3">
+                <ShieldAlert className="h-8 w-8 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">{error}</p>
+              </div>
+            )}
+
+            {passport && !loading && (
+              <div className="p-5 space-y-5">
+                <PatientProfileCard patient={passport.patient} />
+
+                <Tabs defaultValue="brief">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="brief" className="flex-1 text-xs">
+                      <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                      AI Brief
+                    </TabsTrigger>
+                    <TabsTrigger value="prescriptions" className="flex-1 text-xs">
+                      <Pill className="h-3.5 w-3.5 mr-1.5" />
+                      Prescriptions
+                      {passport.prescriptions.length > 0 && (
+                        <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
+                          {passport.prescriptions.length}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
+                    <TabsTrigger value="reports" className="flex-1 text-xs">
+                      <FileText className="h-3.5 w-3.5 mr-1.5" />
+                      Reports
+                      {passport.reports.length > 0 && (
+                        <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">
+                          {passport.reports.length}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* ── AI Brief tab ── */}
+                  <TabsContent value="brief" className="mt-4">
+                    {!briefData && !briefLoading && !briefError && (
+                      <div className="flex flex-col items-center justify-center py-12 gap-4 text-center">
+                        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                          <Sparkles className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Generate AI Pre-Appointment Brief</p>
+                          <p className="text-xs text-muted-foreground max-w-xs">
+                            Summarises this patient's medications, conditions, recent findings,
+                            and clinical focus areas so you are prepared in seconds.
+                          </p>
+                        </div>
+                        <Button size="sm" onClick={handleGenerateBrief} disabled={!appointmentId}>
+                          <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                          Generate Brief
+                        </Button>
+                      </div>
+                    )}
+
+                    {briefLoading && (
+                      <div className="flex flex-col items-center justify-center py-16 gap-3">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground">Analysing patient records…</p>
+                      </div>
+                    )}
+
+                    {briefError && !briefLoading && (
+                      <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                        <AlertCircle className="h-6 w-6 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">{briefError}</p>
+                        <Button size="sm" variant="outline" onClick={handleGenerateBrief}>
+                          Retry
+                        </Button>
+                      </div>
+                    )}
+
+                    {briefData && !briefLoading && (
+                      <div className="space-y-4">
+                        {/* Narrative */}
+                        <div className="rounded-xl border bg-card p-4 space-y-1.5">
+                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Summary
+                          </p>
+                          <p className="text-sm font-light leading-relaxed">{briefData.narrative}</p>
+                        </div>
+
+                        {/* Focus areas */}
+                        {briefData.focus_areas.length > 0 && (
+                          <div className="rounded-xl border bg-card p-4 space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Clinical Focus Areas
+                            </p>
+                            <ul className="space-y-1.5">
+                              {briefData.focus_areas.map((area, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm">
+                                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-foreground shrink-0" />
+                                  <span className="font-light">{area}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Active medications */}
+                        {briefData.active_medications.length > 0 && (
+                          <div className="rounded-xl border bg-card p-4 space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Active Medications
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {briefData.active_medications.map((med, i) => (
+                                <Badge key={i} variant="secondary" className="text-[11px] font-normal">
+                                  {med}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Recent conditions */}
+                        {briefData.recent_conditions.length > 0 && (
+                          <div className="rounded-xl border bg-card p-4 space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Recent Conditions
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {briefData.recent_conditions.map((c, i) => (
+                                <Badge key={i} variant="outline" className="text-[11px] font-normal">
+                                  {c}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Recent findings */}
+                        {briefData.recent_findings.length > 0 && (
+                          <div className="rounded-xl border bg-card p-4 space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                              Recent Findings
+                            </p>
+                            <ul className="space-y-1.5">
+                              {briefData.recent_findings.map((f, i) => (
+                                <li key={i} className="text-sm font-light text-muted-foreground leading-snug">
+                                  {f}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Regenerate */}
+                        <div className="flex justify-end pt-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs text-muted-foreground"
+                            onClick={() => { setBriefData(null); setBriefError(null); }}
+                          >
+                            Regenerate
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="prescriptions" className="mt-4">
+                    <PrescriptionsList
+                      prescriptions={passport.prescriptions}
+                      patientName={passport.patient.full_name}
+                      onView={handleViewRx}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="reports" className="mt-4">
+                    <ReportsList reports={passport.reports} />
+                  </TabsContent>
+                </Tabs>
+              </div>
             {/* ── Inline referral view ── */}
             {referView ? (
               <div className="p-5 space-y-5 animate-in fade-in duration-200">
@@ -784,6 +1014,11 @@ export const DoctorQueue = () => {
 
   // Passport sheet state
   const [passportOpen, setPassportOpen] = useState(false);
+  const [passportPatient, setPassportPatient] = useState<{
+    id: string;
+    name: string;
+    appointmentId: string;
+  } | null>(null);
   const [passportPatient, setPassportPatient] = useState<{ id: string; name: string } | null>(null);
 
   const fetchAll = async () => {
@@ -832,6 +1067,11 @@ export const DoctorQueue = () => {
   };
 
   const handleOpenPassport = (appt: DoctorAppointment) => {
+    setPassportPatient({
+      id: appt.patient_id,
+      name: appt.patients?.full_name ?? 'Patient',
+      appointmentId: appt.id,
+    });
     setPassportPatient({ id: appt.patient_id, name: appt.patients?.full_name ?? 'Patient' });
     setPassportOpen(true);
   };
@@ -963,6 +1203,7 @@ export const DoctorQueue = () => {
         onClose={() => setPassportOpen(false)}
         patientId={passportPatient?.id ?? null}
         patientName={passportPatient?.name ?? ''}
+        appointmentId={passportPatient?.appointmentId ?? null}
       />
     </>
   );

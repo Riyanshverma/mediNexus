@@ -15,6 +15,7 @@ import {
 } from '../controllers/patient/prescriptions.controller.js';
 import { listPatientReports } from '../controllers/patient/reports.controller.js';
 import { reportSpeak } from '../controllers/patient/reportSpeak.controller.js';
+import { getHealthTrends } from '../controllers/patient/healthTrends.controller.js';
 import {
   lockSlot,
   bookAppointment,
@@ -70,6 +71,9 @@ patientRouter.get('/me/prescriptions/:id', getPatientPrescription);
 // ── Reports ──────────────────────────────────────────────────────────
 patientRouter.get('/me/reports', listPatientReports);
 patientRouter.post('/me/reports/:reportId/speak', reportSpeak);
+
+// ── Health Trends ─────────────────────────────────────────────────────
+patientRouter.get('/me/health-trends', getHealthTrends);
 
 // ── Health Passport ───────────────────────────────────────────────────
 patientRouter.get('/me/passport', getPatientPassport);
