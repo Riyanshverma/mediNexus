@@ -210,12 +210,15 @@ export async function createAccessGrant(
         .in('id', toDelete);
     }
 
-    // Create one row per document — encode doc info in record_types
+    // Create one row per document — encode doc info in record_types AND
+    // populate dedicated columns so new readers don't need to decode the array.
     const rows = documents.map(doc => ({
       patient_id:             patient.id,
       granted_to_doctor_id,
       granted_to_hospital_id: doctor.hospital_id,
       record_types:           encodeGrant(doc.document_type, doc.document_id, source),
+      document_type:          doc.document_type,
+      document_id:            doc.document_id,
       valid_until:            validUntil,
       created_at:             new Date().toISOString(),
     }));

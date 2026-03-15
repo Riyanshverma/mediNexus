@@ -79,10 +79,20 @@ export async function getPatientPassportForDoctor(
           grantedReportIds.add(grant.document_id);
         }
       } else {
-        // Legacy hospital-level grant (no document_id) — grants all records of that type
+        // Fallback: decode the packed record_types[] encoding used before
+        // the document_type/document_id columns were added to the live DB.
+        // Format: [docType, docId, source?]  e.g. ['report', '<uuid>', 'manual']
+        // Also handle legacy bulk grants that stored plural type names.
         const types = grant.record_types ?? [];
-        if (types.includes('prescriptions')) hasFullPrescriptionAccess = true;
-        if (types.includes('reports')) hasFullReportAccess = true;
+        if (types.length >= 2 && types[0] === 'report' && types[1]) {
+          grantedReportIds.add(types[1]);
+        } else if (types.length >= 2 && types[0] === 'prescription' && types[1]) {
+          grantedPrescriptionIds.add(types[1]);
+        } else if (types.includes('reports')) {
+          hasFullReportAccess = true;
+        } else if (types.includes('prescriptions')) {
+          hasFullPrescriptionAccess = true;
+        }
       }
     }
 

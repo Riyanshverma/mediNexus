@@ -243,9 +243,20 @@ export async function getAppointmentBrief(
             if (g.document_type === 'prescription') grantedRxIds.add(g.document_id);
             else if (g.document_type === 'report') grantedReportIds.add(g.document_id);
           } else {
+            // Fallback: decode the packed record_types[] encoding used before
+            // the document_type/document_id columns were added to the live DB.
+            // Format: [docType, docId, source?]  e.g. ['report', '<uuid>', 'manual']
+            // Also handle legacy bulk grants that stored plural type names.
             const types: string[] = g.record_types ?? [];
-            if (types.includes('prescriptions')) fullRxAccess = true;
-            if (types.includes('reports')) fullReportAccess = true;
+            if (types.length >= 2 && types[0] === 'report' && types[1]) {
+              grantedReportIds.add(types[1]);
+            } else if (types.length >= 2 && types[0] === 'prescription' && types[1]) {
+              grantedRxIds.add(types[1]);
+            } else if (types.includes('reports')) {
+              fullReportAccess = true;
+            } else if (types.includes('prescriptions')) {
+              fullRxAccess = true;
+            }
           }
         }
 
