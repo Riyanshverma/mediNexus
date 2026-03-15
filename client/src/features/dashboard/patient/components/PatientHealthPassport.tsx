@@ -95,6 +95,58 @@ export const PatientHealthPassport = () => {
   // Collapsible doctor groups
   const [expandedDoctors, setExpandedDoctors] = useState<Set<string>>(new Set());
 
+  // ── Report Audio Analysis ──
+  // reportSpeakState: per-report loading/playing state
+  // 'idle' | 'loading' | 'playing' | 'paused' | 'error'
+  type SpeakState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
+  const [reportSpeakStates, setReportSpeakStates] = useState<Record<string, SpeakState>>({});
+  // Per-report language selection; audio is cached per `${reportId}:${lang}`
+  const [reportLangs, setReportLangs] = useState<Record<string, 'en' | 'hi'>>({});
+  const reportAudioRefs = useRef<Record<string, HTMLAudioElement>>({});
+
+  const setSpeakState = (reportId: string, state: SpeakState) =>
+    setReportSpeakStates((prev) => ({ ...prev, [reportId]: state }));
+
+  const handleSpeakReport = async (reportId: string, lang: 'en' | 'hi') => {
+    const current = reportSpeakStates[reportId] ?? 'idle';
+    const audioKey = `${reportId}:${lang}`;
+
+    // If audio already loaded for this lang — toggle play/pause
+    const existing = reportAudioRefs.current[audioKey];
+    if (existing && (current === 'playing' || current === 'paused')) {
+      if (current === 'playing') {
+        existing.pause();
+        setSpeakState(reportId, 'paused');
+      } else {
+        existing.play();
+        setSpeakState(reportId, 'playing');
+      }
+      return;
+    }
+
+    // Otherwise: fetch from server
+    setSpeakState(reportId, 'loading');
+    try {
+      const res = await patientService.speakReport(reportId, lang);
+      const audioBase64 = res.data?.audio_base64;
+      if (!audioBase64) throw new Error('No audio received');
+
+      const audio = new Audio(`data:audio/wav;base64,${audioBase64}`);
+      reportAudioRefs.current[audioKey] = audio;
+
+      audio.onended = () => setSpeakState(reportId, 'idle');
+      audio.onpause = () => {
+        if (!audio.ended) setSpeakState(reportId, 'paused');
+      };
+      audio.onplay = () => setSpeakState(reportId, 'playing');
+
+      await audio.play();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Failed to generate audio');
+      setSpeakState(reportId, 'error');
+    }
+  };
+
   // ── Grant Access Dialog ──
   const [grantDialogOpen, setGrantDialogOpen] = useState(false);
   const [grantDoctorQuery, setGrantDoctorQuery] = useState('');
@@ -252,6 +304,13 @@ export const PatientHealthPassport = () => {
 
   return (
     <>
+      {/* Waveform bar animation for report speak button */}
+      <style>{`
+        @keyframes speakBar {
+          0%, 100% { transform: scaleY(0.3); }
+          50%       { transform: scaleY(1); }
+        }
+      `}</style>
       <div className="p-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-light tracking-tight">Health Passport</h1>
@@ -333,25 +392,120 @@ export const PatientHealthPassport = () => {
                 {(passport?.reports ?? []).length === 0 ? (
                   <div className="bg-card rounded-xl border p-12 text-center text-muted-foreground">No reports found.</div>
                 ) : (
-                  (passport?.reports ?? []).map((report) => (
-                    <div key={report.id} className="bg-card rounded-xl border p-5 flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{report.report_name}</p>
-                        <p className="text-sm text-muted-foreground capitalize">
-                          {report.report_type.replace('_', ' ')} · {(report as any).hospitals?.name ?? ''} ·{' '}
-                          {format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
-                        </p>
+                  (passport?.reports ?? []).map((report) => {
+                    const speakState = reportSpeakStates[report.id] ?? 'idle';
+                    const isLoading = speakState === 'loading';
+                    const isPlaying = speakState === 'playing';
+                    const isError = speakState === 'error';
+                    const lang = reportLangs[report.id] ?? 'en';
+
+                    return (
+                      <div key={report.id} className="bg-card rounded-xl border p-5 flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{report.report_name}</p>
+                          <p className="text-sm text-muted-foreground capitalize">
+                            {report.report_type.replace('_', ' ')} · {(report as any).hospitals?.name ?? ''} ·{' '}
+                            {format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {/* ── Language toggle ── */}
+                          <div className="flex items-center rounded-md border border-border overflow-hidden text-xs">
+                            {(['en', 'hi'] as const).map((l) => (
+                              <button
+                                key={l}
+                                onClick={() => {
+                                  if (l === lang) return;
+                                  // Stop any currently playing audio for this report
+                                  const audioKey = `${report.id}:${lang}`;
+                                  const existing = reportAudioRefs.current[audioKey];
+                                  if (existing) { existing.pause(); existing.currentTime = 0; }
+                                  setSpeakState(report.id, 'idle');
+                                  setReportLangs((prev) => ({ ...prev, [report.id]: l }));
+                                }}
+                                disabled={isLoading}
+                                className={`px-2 py-1 font-medium transition-colors ${
+                                  lang === l
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                              >
+                                {l === 'en' ? 'EN' : 'हि'}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* ── Audio speak button ── */}
+                          <button
+                            onClick={() => handleSpeakReport(report.id, lang)}
+                            disabled={isLoading}
+                            title={isPlaying ? 'Pause audio' : isLoading ? 'Generating audio…' : 'Listen to AI analysis'}
+                            className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-colors ${
+                              isError
+                                ? 'border-destructive/40 text-destructive bg-destructive/5 hover:bg-destructive/10'
+                                : isPlaying
+                                ? 'border-primary/40 text-primary bg-primary/10 hover:bg-primary/15'
+                                : 'border-border text-muted-foreground bg-muted/40 hover:bg-muted hover:text-foreground'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          >
+                            {isLoading ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                <span>Analysing…</span>
+                              </>
+                            ) : isPlaying ? (
+                              <>
+                                {/* Animated waveform bars */}
+                                <span className="flex items-end gap-[2px] h-3.5">
+                                  {[0, 1, 2, 3].map((i) => (
+                                    <span
+                                      key={i}
+                                      className="w-[3px] rounded-full bg-primary"
+                                      style={{
+                                        height: '100%',
+                                        animation: `speakBar 0.8s ease-in-out infinite`,
+                                        animationDelay: `${i * 0.15}s`,
+                                        transformOrigin: 'bottom',
+                                      }}
+                                    />
+                                  ))}
+                                </span>
+                                <span>Pause</span>
+                              </>
+                            ) : isError ? (
+                              <>
+                                <span className="text-xs">⚠</span>
+                                <span>Retry</span>
+                              </>
+                            ) : (
+                              <>
+                                {/* Static waveform icon (play state) */}
+                                <span className="flex items-end gap-[2px] h-3.5">
+                                  {[2, 4, 3, 5].map((h, i) => (
+                                    <span
+                                      key={i}
+                                      className="w-[3px] rounded-full bg-current"
+                                      style={{ height: `${h * 14}%` }}
+                                    />
+                                  ))}
+                                </span>
+                                <span>Listen</span>
+                              </>
+                            )}
+                          </button>
+
+                          <a
+                            href={report.report_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline"
+                          >
+                            View
+                          </a>
+                        </div>
                       </div>
-                      <a
-                        href={report.report_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline"
-                      >
-                        View
-                      </a>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
