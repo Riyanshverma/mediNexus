@@ -322,6 +322,23 @@ export const patientService = {
       `/api/patients/me/reports/${reportId}/speak`,
       { lang }
     ),
+
+  // Longitudinal Health Trend Analysis
+  getHealthTrends: () =>
+    api.get<{
+      data: {
+        summary: string;
+        trends: {
+          parameter: string;
+          direction: 'improving' | 'declining' | 'stable' | 'variable';
+          concern: 'none' | 'watch' | 'urgent';
+          note: string;
+        }[];
+        report_count: number;
+        generated_at: string;
+        cached?: boolean;
+      };
+    }>('/api/patients/me/health-trends'),
 };
 
 // ─── Keepalive release helpers ────────────────────────────────────────────────

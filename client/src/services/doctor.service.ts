@@ -305,4 +305,22 @@ export const doctorService = {
     api.get<{ data: { doctors: DoctorSearchResult[] } }>(
       `/api/doctors/search?q=${encodeURIComponent(q)}`
     ),
+
+  // AI Pre-Appointment Brief
+  getAppointmentBrief: (appointmentId: string) =>
+    api.post<{
+      data: {
+        patient_name: string;
+        age: number | null;
+        blood_group: string | null;
+        known_allergies: string | null;
+        active_medications: string[];
+        recent_conditions: string[];
+        recent_findings: string[];
+        focus_areas: string[];
+        narrative: string;
+        generated_at: string;
+        cached?: boolean;
+      };
+    }>(`/api/doctors/me/appointments/${appointmentId}/ai-brief`),
 };

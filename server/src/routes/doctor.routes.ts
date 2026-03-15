@@ -28,6 +28,7 @@ import {
   getAIInsights,
 } from '../controllers/doctor/prescriptions.controller.js';
 import { getPatientPassportForDoctor } from '../controllers/doctor/passport.controller.js';
+import { getAppointmentBrief } from '../controllers/doctor/appointmentBrief.controller.js';
 import {
   createReferral,
   listReferrals,
@@ -53,6 +54,7 @@ doctorRouter.patch(
   validate(updateAppointmentStatusSchema),
   updateDoctorAppointmentStatus
 );
+doctorRouter.post('/me/appointments/:appointmentId/ai-brief', getAppointmentBrief);
 
 // ── Slots ────────────────────────────────────────────────────────────
 doctorRouter.get('/me/slots', listDoctorSlots);

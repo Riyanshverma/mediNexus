@@ -16,6 +16,11 @@ import {
   Plus,
   Search,
   X,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Activity,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +47,23 @@ import {
   type PDFPrescriptionData,
 } from '@/features/dashboard/shared/PrescriptionViewModal';
 
-type PassportTab = 'prescriptions' | 'reports' | 'grants' | 'referrals';
+type PassportTab = 'prescriptions' | 'reports' | 'grants' | 'referrals' | 'trends';
+
+// ─── Trend types ──────────────────────────────────────────────────────────────
+
+interface TrendItem {
+  parameter: string;
+  direction: 'improving' | 'declining' | 'stable' | 'variable';
+  concern: 'none' | 'watch' | 'urgent';
+  note: string;
+}
+
+interface TrendsData {
+  summary: string;
+  trends: TrendItem[];
+  report_count: number;
+  generated_at: string;
+}
 
 // ─── Helper: group grants by doctor ──────────────────────────────────────────
 
@@ -144,6 +165,25 @@ export const PatientHealthPassport = () => {
     } catch (e: any) {
       toast.error(e.message ?? 'Failed to generate audio');
       setSpeakState(reportId, 'error');
+    }
+  };
+
+  // ── Health Trends ──
+  const [trendsData, setTrendsData] = useState<TrendsData | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
+
+  const handleGenerateTrends = async () => {
+    if (trendsLoading) return;
+    setTrendsLoading(true);
+    setTrendsError(null);
+    try {
+      const res = await patientService.getHealthTrends();
+      setTrendsData(res.data);
+    } catch (e: any) {
+      setTrendsError(e.message ?? 'Failed to generate trend analysis');
+    } finally {
+      setTrendsLoading(false);
     }
   };
 
@@ -298,6 +338,7 @@ export const PatientHealthPassport = () => {
   const tabs: { key: PassportTab; label: string; icon: any; badge?: number }[] = [
     { key: 'prescriptions', label: 'Prescriptions', icon: Pill },
     { key: 'reports', label: 'Reports', icon: FileText },
+    { key: 'trends', label: 'Health Trends', icon: Activity },
     { key: 'grants', label: 'Access Granted', icon: Share2, badge: activeGrantCount || undefined },
     { key: 'referrals', label: 'Referrals', icon: ArrowRightLeft },
   ];
@@ -752,6 +793,119 @@ export const PatientHealthPassport = () => {
                       </div>
                     );
                   })
+                )}
+              </div>
+            )}
+
+            {/* ── Health Trends ── */}
+            {tab === 'trends' && (
+              <div className="space-y-4">
+                {/* Generate / Regenerate button */}
+                {!trendsData && !trendsLoading && (
+                  <div className="bg-card rounded-xl border p-10 flex flex-col items-center gap-4 text-center">
+                    <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Activity className="h-7 w-7 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Longitudinal Health Trend Analysis</p>
+                      <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                        AI reads all your reports together in chronological order and surfaces how your key health markers have changed over time.
+                      </p>
+                    </div>
+                    {trendsError && (
+                      <p className="text-sm text-destructive">{trendsError}</p>
+                    )}
+                    <Button onClick={handleGenerateTrends} className="gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Analyse My Health Trends
+                    </Button>
+                  </div>
+                )}
+
+                {trendsLoading && (
+                  <div className="bg-card rounded-xl border p-16 flex flex-col items-center gap-3 text-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">
+                      Reading your reports and identifying trends…
+                    </p>
+                    <p className="text-xs text-muted-foreground opacity-60">This may take 15–30 seconds</p>
+                  </div>
+                )}
+
+                {trendsData && !trendsLoading && (
+                  <>
+                    {/* Overall summary card */}
+                    <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                          <p className="text-sm font-medium text-primary">Overall Summary</p>
+                        </div>
+                        <button
+                          onClick={() => { setTrendsData(null); handleGenerateTrends(); }}
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                      <p className="text-sm text-foreground leading-relaxed">{trendsData.summary}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Based on {trendsData.report_count} reports · Generated {format(parseISO(trendsData.generated_at), 'MMM d, yyyy')}
+                      </p>
+                    </div>
+
+                    {/* Individual trend cards */}
+                    {trendsData.trends.length === 0 ? (
+                      <div className="bg-card rounded-xl border p-8 text-center text-muted-foreground text-sm">
+                        No measurable parameter trends were found across your reports.
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {trendsData.trends.map((trend, i) => {
+                          const directionIcon =
+                            trend.direction === 'improving' ? <TrendingUp className="h-4 w-4" /> :
+                            trend.direction === 'declining' ? <TrendingDown className="h-4 w-4" /> :
+                            trend.direction === 'variable' ? <Activity className="h-4 w-4" /> :
+                            <Minus className="h-4 w-4" />;
+
+                          const concernColors = {
+                            urgent: 'border-red-500/30 bg-red-500/5',
+                            watch: 'border-yellow-500/30 bg-yellow-500/5',
+                            none: 'border-green-500/30 bg-green-500/5',
+                          }[trend.concern] ?? 'border-border bg-card';
+
+                          const directionColors = {
+                            improving: 'text-green-600',
+                            declining: trend.concern === 'urgent' ? 'text-red-500' : 'text-yellow-600',
+                            stable: 'text-green-600',
+                            variable: 'text-yellow-600',
+                          }[trend.direction] ?? 'text-muted-foreground';
+
+                          const concernLabel = {
+                            urgent: '⚠ Needs attention',
+                            watch: '· Worth monitoring',
+                            none: '· Looking good',
+                          }[trend.concern] ?? '';
+
+                          return (
+                            <div key={i} className={`rounded-xl border p-4 space-y-2 ${concernColors}`}>
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-medium leading-tight">{trend.parameter}</p>
+                                <span className={`flex items-center gap-1 text-xs font-medium shrink-0 ${directionColors}`}>
+                                  {directionIcon}
+                                  <span className="capitalize">{trend.direction}</span>
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground leading-relaxed">{trend.note}</p>
+                              {trend.concern !== 'none' && (
+                                <p className={`text-xs font-medium ${directionColors}`}>{concernLabel}</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
