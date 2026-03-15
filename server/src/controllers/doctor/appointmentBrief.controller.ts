@@ -125,19 +125,22 @@ async function generateBrief(context: {
   const data = (await res.json()) as any;
   const raw: string = data?.choices?.[0]?.message?.content?.trim() ?? '';
 
-  const jsonStr = raw
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
+  let jsonStr = raw;
+  const startIndex = raw.indexOf('{');
+  const endIndex = raw.lastIndexOf('}');
+
+  if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
+    jsonStr = raw.substring(startIndex, endIndex + 1);
+  }
 
   let parsed: Partial<AppointmentBrief>;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch {
-    console.error('[appointmentBrief] JSON parse failed, raw:', raw);
+  } catch (err) {
+    console.error('[appointmentBrief] JSON parse failed, err:', err);
+    console.error('[appointmentBrief] raw string was:', raw);
     parsed = {
-      narrative: raw || 'Brief could not be generated. Please review the patient records manually.',
+      narrative: 'We generated a brief but could not format it properly. Details:\n\n' + raw,
       active_medications: [],
       recent_conditions: [],
       recent_findings: [],
