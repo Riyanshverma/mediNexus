@@ -315,4 +315,11 @@ export const patientService = {
   // AI Health Assistant
   aiChat: (payload: { message: string; history: AIChatMessage[] }) =>
     api.post<{ data: { reply: string } }>('/api/patients/me/ai-chat', payload),
+
+  // Report Audio Analysis
+  speakReport: (reportId: string, lang: 'en' | 'hi' = 'en') =>
+    api.post<{ data: { audio_base64: string; analysis_text: string } }>(
+      `/api/patients/me/reports/${reportId}/speak`,
+      { lang }
+    ),
 };
