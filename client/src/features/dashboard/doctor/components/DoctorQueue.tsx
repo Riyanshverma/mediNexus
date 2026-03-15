@@ -196,11 +196,10 @@ function PatientProfileCard({ patient }: { patient: PassportPatient }) {
 
 function PrescriptionsList({
   prescriptions,
-  patientName,
   onView,
 }: {
   prescriptions: PassportPrescription[];
-  patientName: string;
+  patientName?: string;
   onView: (rx: PassportPrescription) => void;
 }) {
   if (prescriptions.length === 0) {

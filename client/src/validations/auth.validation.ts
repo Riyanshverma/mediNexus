@@ -31,7 +31,7 @@ export const patientSignUpSchema = z
     password: password,
     confirmPassword: z.string().min(1, 'Please confirm your password'),
     phone: phone,
-    dob: z.date({ required_error: 'A date of birth is required.' }),
+    dob: z.date({ message: 'A date of birth is required.' }),
     bloodGroup: z.string().min(1, 'Blood group is required'),
   })
   .refine((data) => data.password === data.confirmPassword, {
