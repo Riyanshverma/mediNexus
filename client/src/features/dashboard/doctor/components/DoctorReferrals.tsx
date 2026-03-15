@@ -40,12 +40,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-interface DoctorReferralsProps {
-  preselectedPatient?: { id: string; full_name: string } | null;
-  onPreselectedConsumed?: () => void;
-}
-
-export const DoctorReferrals = ({ preselectedPatient, onPreselectedConsumed }: DoctorReferralsProps = {}) => {
+export const DoctorReferrals = () => {
   // ── Referrals list ──
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,21 +90,6 @@ export const DoctorReferrals = ({ preselectedPatient, onPreselectedConsumed }: D
   }, []);
 
   useEffect(() => { fetchReferrals(); }, [fetchReferrals]);
-
-  // ── Auto-open form with preselected patient (from "Refer" button in appointment view) ──
-  useEffect(() => {
-    if (!preselectedPatient) return;
-    setShowForm(true);
-    setTab('sent');
-    setSelectedPatient(preselectedPatient);
-    setDoctorQuery('');
-    setDoctorResults([]);
-    setSelectedReferDoctor(null);
-    setReason('');
-    fetchPatients(preselectedPatient);
-    onPreselectedConsumed?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preselectedPatient]);
 
   // ── Fetch patients from past appointments (for creating referrals) ──
   const fetchPatients = useCallback(async (ensurePatient?: { id: string; full_name: string }) => {
