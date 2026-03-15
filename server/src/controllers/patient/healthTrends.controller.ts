@@ -118,21 +118,24 @@ async function generateTrends(
   const data = (await res.json()) as any;
   const raw: string = data?.choices?.[0]?.message?.content?.trim() ?? '';
 
-  // Strip any accidental markdown code fences
-  const jsonStr = raw
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
+  let jsonStr = raw;
+  // Robust JSON extraction: find first '{' and last '}'
+  const startIndex = raw.indexOf('{');
+  const endIndex = raw.lastIndexOf('}');
+
+  if (startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex) {
+    jsonStr = raw.substring(startIndex, endIndex + 1);
+  }
 
   let parsed: { summary: string; trends: TrendItem[] };
   try {
     parsed = JSON.parse(jsonStr);
-  } catch {
-    console.error('[healthTrends] JSON parse failed, raw:', raw);
+  } catch (err) {
+    console.error('[healthTrends] JSON parse failed, err:', err);
+    console.error('[healthTrends] raw string was:', raw);
     // Fallback: return the raw text as summary with no trends
     parsed = {
-      summary: raw || 'Trend analysis could not be parsed. Please try again.',
+      summary: 'We generated a summary but could not format it as trends. Details:\n\n' + raw,
       trends: [],
     };
   }
