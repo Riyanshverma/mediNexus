@@ -213,7 +213,12 @@ export async function listReferrals(
     if (sentError || receivedError) {
       const errMsg = sentError?.message ?? receivedError?.message ?? '';
       // If the table doesn't exist yet (migration not applied), return empty list gracefully
-      if (errMsg.includes('relation') || errMsg.includes('does not exist')) {
+      if (
+        errMsg.includes('relation') ||
+        errMsg.includes('does not exist') ||
+        errMsg.includes('schema cache') ||
+        errMsg.includes('Could not find the table')
+      ) {
         sendSuccess(res, { referrals: [] }, 'Referrals retrieved (table not yet available)');
         return;
       }

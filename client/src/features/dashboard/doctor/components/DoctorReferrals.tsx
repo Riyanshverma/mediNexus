@@ -40,12 +40,7 @@ const STATUS_BADGE: Record<string, string> = {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-interface DoctorReferralsProps {
-  preselectedPatient?: { id: string; full_name: string } | null;
-  onPreselectedConsumed?: () => void;
-}
-
-export const DoctorReferrals = ({ preselectedPatient, onPreselectedConsumed }: DoctorReferralsProps = {}) => {
+export const DoctorReferrals = () => {
   // ── Referrals list ──
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,11 +73,16 @@ export const DoctorReferrals = ({ preselectedPatient, onPreselectedConsumed }: D
     } catch (err: any) {
       const msg: string = err?.message ?? '';
       // Graceful fallback when the referrals table hasn't been migrated yet
-      if (msg.toLowerCase().includes('relation') || msg.toLowerCase().includes('does not exist')) {
+      if (
+        msg.toLowerCase().includes('relation') ||
+        msg.toLowerCase().includes('does not exist') ||
+        msg.toLowerCase().includes('schema cache') ||
+        msg.toLowerCase().includes("could not find the table")
+      ) {
         setReferrals([]);
         toast.error('Referrals table not yet set up — restart the server to apply migrations.');
       } else {
-        toast.error(msg || 'Failed to load referrals');
+        toast.error(msg || 'Failed to fetch referrals');
       }
     } finally {
       setLoading(false);
@@ -90,21 +90,6 @@ export const DoctorReferrals = ({ preselectedPatient, onPreselectedConsumed }: D
   }, []);
 
   useEffect(() => { fetchReferrals(); }, [fetchReferrals]);
-
-  // ── Auto-open form with preselected patient (from "Refer" button in appointment view) ──
-  useEffect(() => {
-    if (!preselectedPatient) return;
-    setShowForm(true);
-    setTab('sent');
-    setSelectedPatient(preselectedPatient);
-    setDoctorQuery('');
-    setDoctorResults([]);
-    setSelectedReferDoctor(null);
-    setReason('');
-    fetchPatients(preselectedPatient);
-    onPreselectedConsumed?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preselectedPatient]);
 
   // ── Fetch patients from past appointments (for creating referrals) ──
   const fetchPatients = useCallback(async (ensurePatient?: { id: string; full_name: string }) => {
