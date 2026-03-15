@@ -323,3 +323,35 @@ export const patientService = {
       { lang }
     ),
 };
+
+// ─── Keepalive release helpers ────────────────────────────────────────────────
+// These use fetch with keepalive:true so the request survives page reload/close.
+// Use these in beforeunload handlers and useEffect cleanups.
+
+const _BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
+
+export function releaseSlotLockBeacon(slotId: string): void {
+  try {
+    fetch(`${_BASE}/api/patients/me/slots/${slotId}/release`, {
+      method: 'PATCH',
+      credentials: 'include',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {});
+  } catch {
+    // keepalive not supported in this environment — ignore
+  }
+}
+
+export function releaseServiceSlotBeacon(slotId: string): void {
+  try {
+    fetch(`${_BASE}/api/services/${slotId}/release`, {
+      method: 'PATCH',
+      credentials: 'include',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {});
+  } catch {
+    // keepalive not supported in this environment — ignore
+  }
+}

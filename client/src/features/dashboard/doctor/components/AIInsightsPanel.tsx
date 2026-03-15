@@ -10,8 +10,6 @@ import {
   ShieldAlert,
   Info,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   doctorService,
   type AIInsights,
@@ -20,7 +18,6 @@ import {
   type AIAllergyWarning,
 } from '@/services/doctor.service';
 import type { RxItem } from './RxPad';
-import type { MedicineResult } from '@/services/doctor.service';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

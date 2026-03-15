@@ -1,11 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Loader2, X, ListChecks, ArrowRight, Stethoscope, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { patientService, type PatientAppointment } from '@/services/patient.service';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
-import { useAppointmentRefresh } from '@/hooks/useAppointmentRefresh';
 
 type Filter = 'upcoming' | 'past' | 'all';
 type AppointmentKind = 'doctor' | 'service';

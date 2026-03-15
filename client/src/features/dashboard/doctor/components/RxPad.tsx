@@ -2,7 +2,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { Trash2, ClipboardPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { IconHeartbeat } from '@tabler/icons-react';
-import type { MedicineResult, DoctorProfile } from '@/services/doctor.service';
+import type { MedicineResult } from '@/services/doctor.service';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

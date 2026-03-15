@@ -24,7 +24,7 @@ export async function getPatientPassport(
     const patient = await requirePatient(userId);
 
     // Run all queries in parallel
-    const [prescriptionsResult, reportsResult, grantsResult, referralsResult] = await Promise.all([
+    const [prescriptionsResult, reportsResult, grantsResult] = await Promise.all([
       supabaseAdmin
         .from('prescriptions')
         .select(
@@ -42,23 +42,14 @@ export async function getPatientPassport(
         .select('*, hospitals ( name, city )')
         .eq('patient_id', patient.id)
         .order('uploaded_at', { ascending: false }),
+      // Select the new document-level columns added by migration 006
       supabaseAdmin
         .from('record_access_grants')
         .select(
-          `id, granted_to_hospital_id, granted_to_doctor_id, record_types, 
-           document_type, document_id, source, valid_until, created_at`
+          `id, granted_to_hospital_id, granted_to_doctor_id, document_type, document_id, source, record_types, valid_until, created_at`
         )
         .eq('patient_id', patient.id)
         .order('created_at', { ascending: false }),
-      Promise.resolve(
-        supabaseAdmin
-          .from('referrals')
-          .select(
-            `id, referring_doctor_id, referred_to_doctor_id, reason, status, created_at, updated_at`
-          )
-          .eq('patient_id', patient.id)
-          .order('created_at', { ascending: false })
-      ).catch(() => ({ data: [], error: null })), // graceful: referrals table may not exist yet
     ]);
 
     if (prescriptionsResult.error) {
@@ -66,14 +57,41 @@ export async function getPatientPassport(
       throw new AppError('Failed to fetch prescriptions', 500);
     }
 
+    // Referrals query is wrapped separately with graceful error handling
+    // (the table may not exist yet if migration 006 hasn't run)
+    const referralsResult = await supabaseAdmin
+      .from('referrals')
+      .select(
+        `id, referring_doctor_id, referred_to_doctor_id, reason, status, created_at, updated_at`
+      )
+      .eq('patient_id', patient.id)
+      .order('created_at', { ascending: false });
+
     // Enrich grants with doctor & document details
     const rawGrants = grantsResult.data ?? [];
     let enrichedGrants: any[] = [];
 
     if (rawGrants.length > 0) {
-      const doctorIds = [...new Set(rawGrants.map(g => g.granted_to_doctor_id).filter(Boolean))];
-      const prescriptionIds = rawGrants.filter(g => g.document_type === 'prescription').map(g => g.document_id).filter(Boolean);
-      const reportIds = rawGrants.filter(g => g.document_type === 'report').map(g => g.document_id).filter(Boolean);
+      // Use the new direct columns (migration 006). Fall back to record_types[] for old rows.
+      const decoded = rawGrants.map(g => {
+        let docType = (g as any).document_type ?? '';
+        let docId = (g as any).document_id ?? '';
+        let source = (g as any).source ?? 'manual';
+
+        // Legacy fallback: old rows that haven't been re-saved may only have record_types
+        if (!docType && g.record_types) {
+          const rt = (g.record_types ?? []) as string[];
+          docType = rt[0] ?? '';
+          docId = rt[1] ?? '';
+          source = rt[2] ?? 'manual';
+        }
+
+        return { ...g, document_type: docType, document_id: docId, source };
+      });
+
+      const doctorIds = [...new Set(decoded.map(g => g.granted_to_doctor_id).filter(Boolean))];
+      const prescriptionIds = decoded.filter(g => g.document_type === 'prescription').map(g => g.document_id).filter(Boolean);
+      const reportIds = decoded.filter(g => g.document_type === 'report').map(g => g.document_id).filter(Boolean);
 
       const [doctorsRes, rxRes, rptRes] = await Promise.all([
         doctorIds.length > 0
@@ -96,7 +114,7 @@ export async function getPatientPassport(
       const rptMap: Record<string, any> = {};
       for (const r of (rptRes.data ?? [])) rptMap[r.id] = r;
 
-      enrichedGrants = rawGrants.map(g => ({
+      enrichedGrants = decoded.map(g => ({
         ...g,
         doctor: g.granted_to_doctor_id ? doctorMap[g.granted_to_doctor_id] ?? null : null,
         document: g.document_id
@@ -106,11 +124,10 @@ export async function getPatientPassport(
       }));
     }
 
-    // Enrich referrals with doctor names
-    const rawReferrals = referralsResult.data ?? [];
+    // Enrich referrals with doctor names — graceful if table doesn't exist yet
     let enrichedReferrals: any[] = [];
-
-    if (rawReferrals.length > 0) {
+    if (!referralsResult.error && (referralsResult.data?.length ?? 0) > 0) {
+      const rawReferrals = referralsResult.data!;
       const allDoctorIds = [
         ...new Set([
           ...rawReferrals.map(r => r.referring_doctor_id),
@@ -131,6 +148,8 @@ export async function getPatientPassport(
         referring_doctor: refDocMap[r.referring_doctor_id] ?? null,
         referred_to_doctor: refDocMap[r.referred_to_doctor_id] ?? null,
       }));
+    } else if (referralsResult.error) {
+      console.warn('[getPatientPassport] referrals query failed (table may not exist yet):', referralsResult.error.message);
     }
 
     sendSuccess(

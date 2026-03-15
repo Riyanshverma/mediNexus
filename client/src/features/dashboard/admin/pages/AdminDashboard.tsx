@@ -6,8 +6,10 @@ import { AdminDoctors } from '../components/AdminDoctors';
 import { AdminServices } from '../components/AdminServices';
 import { AdminAppointments } from '../components/AdminAppointments';
 import { AdminServiceSlots } from '../components/AdminServiceSlots';
+import { AdminServiceAppointments } from '../components/AdminServiceAppointments';
 import { AdminProfilePage } from '../components/AdminProfilePage';
 import { AdminReports } from '../components/AdminReports';
+import { AdminDoctorSlots } from '../components/AdminDoctorSlots';
 
 const AdminDashboard = () => {
   const location = useLocation();
@@ -30,6 +32,10 @@ const AdminDashboard = () => {
         return <AdminServices />;
       case 'service-slots':
         return <AdminServiceSlots />;
+      case 'service-appointments':
+        return <AdminServiceAppointments />;
+      case 'doctor-slots':
+        return <AdminDoctorSlots />;
       case 'appointments':
         return <AdminAppointments />;
       case 'reports':

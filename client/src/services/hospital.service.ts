@@ -84,6 +84,49 @@ export interface HospitalAppointment {
   patients?: { full_name: string; phone_number: string | null } | null;
 }
 
+export type AdminDoctorSlotStatus = 'available' | 'booked' | 'locked' | 'cancelled' | 'blocked';
+
+export interface AdminDoctorSlot {
+  id: string;
+  slot_start: string;
+  slot_end: string;
+  status: AdminDoctorSlotStatus;
+  locked_by: string | null;
+  locked_until: string | null;
+  doctor_id: string;
+  appointment: {
+    id: string;
+    status: string;
+    booking_type: string;
+    notes: string | null;
+    patients: { id: string; full_name: string; phone_number: string | null } | null;
+  } | null;
+}
+
+export type ServiceAppointmentStatus =
+  | 'booked'
+  | 'checked_in'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+  | 'no_show';
+
+export interface ServiceAppointment {
+  id: string;
+  slot_id: string;
+  patient_id: string;
+  hospital_id: string;
+  service_id: string;
+  booking_type: string;
+  status: ServiceAppointmentStatus;
+  notes: string | null;
+  booked_at: string | null;
+  created_at: string;
+  service_slots: { slot_date: string; slot_number: number } | null;
+  hospital_services: { service_name: string; department: string; fee: number } | null;
+  patients: { full_name: string; phone_number: string | null } | null;
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const hospitalService = {
@@ -136,10 +179,37 @@ export const hospitalService = {
   deleteService: (serviceId: string) =>
     api.delete<{ data: null }>(`/api/hospitals/me/services/${serviceId}`),
 
-  // Appointments
+  // Doctor Appointments
   listAppointments: (filter?: 'upcoming' | 'past' | 'all') =>
     api.get<{ data: { appointments: HospitalAppointment[] } }>(
       `/api/hospitals/me/appointments${filter ? `?filter=${filter}` : ''}`
+    ),
+
+  // Service Appointments
+  listServiceAppointments: (params?: {
+    filter?: 'upcoming' | 'past' | 'all';
+    serviceId?: string;
+    status?: ServiceAppointmentStatus;
+    date?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.filter) query.set('filter', params.filter);
+    if (params?.serviceId) query.set('serviceId', params.serviceId);
+    if (params?.status) query.set('status', params.status);
+    if (params?.date) query.set('date', params.date);
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    if (params?.offset != null) query.set('offset', String(params.offset));
+    return api.get<{ data: { appointments: ServiceAppointment[]; total: number } }>(
+      `/api/hospitals/me/services/appointments${query.toString() ? `?${query}` : ''}`
+    );
+  },
+
+  updateServiceAppointmentStatus: (appointmentId: string, status: ServiceAppointmentStatus) =>
+    api.patch<{ data: { appointment: { id: string; status: ServiceAppointmentStatus } } }>(
+      `/api/hospitals/me/services/appointments/${appointmentId}/status`,
+      { status }
     ),
 
   // Invite doctor
@@ -154,6 +224,41 @@ export const hospitalService = {
     slot_duration_mins: number;
     days_ahead?: number;
   }) => api.post(`/api/hospitals/me/doctors/${doctorId}/slots/generate`, payload),
+
+  // Admin doctor slot management
+  listDoctorSlots: (doctorId: string, date?: string) =>
+    api.get<{ data: { slots: AdminDoctorSlot[]; date: string } }>(
+      `/api/hospitals/me/doctors/${doctorId}/slots${date ? `?date=${date}` : ''}`
+    ),
+
+  blockDoctorSlot: (doctorId: string, slotId: string) =>
+    api.patch<{ data: { slot: AdminDoctorSlot } }>(
+      `/api/hospitals/me/doctors/${doctorId}/slots/${slotId}/block`,
+      {}
+    ),
+
+  unblockDoctorSlot: (doctorId: string, slotId: string) =>
+    api.patch<{ data: { slot: AdminDoctorSlot } }>(
+      `/api/hospitals/me/doctors/${doctorId}/slots/${slotId}/unblock`,
+      {}
+    ),
+
+  deleteDoctorSlot: (doctorId: string, slotId: string) =>
+    api.delete<{ data: null }>(
+      `/api/hospitals/me/doctors/${doctorId}/slots/${slotId}`
+    ),
+
+  bookWalkIn: (doctorId: string, payload: { slot_id: string; patient_id: string; notes?: string }) =>
+    api.post<{ data: { appointment: any; patient: { id: string; full_name: string }; doctor: { id: string; full_name: string } } }>(
+      `/api/hospitals/me/doctors/${doctorId}/walk-in`,
+      payload
+    ),
+
+  cancelDoctorAppointment: (doctorId: string, appointmentId: string) =>
+    api.patch<{ data: null }>(
+      `/api/hospitals/me/doctors/${doctorId}/appointments/${appointmentId}/cancel`,
+      {}
+    ),
 
   // Service Slots Management
   generateServiceSlots: (payload: {

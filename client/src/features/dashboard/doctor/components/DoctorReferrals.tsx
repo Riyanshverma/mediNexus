@@ -40,7 +40,12 @@ const STATUS_BADGE: Record<string, string> = {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export const DoctorReferrals = () => {
+interface DoctorReferralsProps {
+  preselectedPatient?: { id: string; full_name: string } | null;
+  onPreselectedConsumed?: () => void;
+}
+
+export const DoctorReferrals = ({ preselectedPatient, onPreselectedConsumed }: DoctorReferralsProps = {}) => {
   // ── Referrals list ──
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +76,14 @@ export const DoctorReferrals = () => {
       const res = await doctorService.listReferrals();
       setReferrals((res as any).data?.referrals ?? []);
     } catch (err: any) {
-      toast.error(err?.message ?? 'Failed to load referrals');
+      const msg: string = err?.message ?? '';
+      // Graceful fallback when the referrals table hasn't been migrated yet
+      if (msg.toLowerCase().includes('relation') || msg.toLowerCase().includes('does not exist')) {
+        setReferrals([]);
+        toast.error('Referrals table not yet set up — restart the server to apply migrations.');
+      } else {
+        toast.error(msg || 'Failed to load referrals');
+      }
     } finally {
       setLoading(false);
     }
@@ -79,8 +91,23 @@ export const DoctorReferrals = () => {
 
   useEffect(() => { fetchReferrals(); }, [fetchReferrals]);
 
+  // ── Auto-open form with preselected patient (from "Refer" button in appointment view) ──
+  useEffect(() => {
+    if (!preselectedPatient) return;
+    setShowForm(true);
+    setTab('sent');
+    setSelectedPatient(preselectedPatient);
+    setDoctorQuery('');
+    setDoctorResults([]);
+    setSelectedReferDoctor(null);
+    setReason('');
+    fetchPatients(preselectedPatient);
+    onPreselectedConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedPatient]);
+
   // ── Fetch patients from past appointments (for creating referrals) ──
-  const fetchPatients = useCallback(async () => {
+  const fetchPatients = useCallback(async (ensurePatient?: { id: string; full_name: string }) => {
     setPatientsLoading(true);
     try {
       const res = await doctorService.listAppointments('all');
@@ -93,6 +120,10 @@ export const DoctorReferrals = () => {
           seen.add(a.patient_id);
           uniquePatients.push({ id: a.patient_id, full_name: a.patients.full_name });
         }
+      }
+      // Ensure preselected patient is always in the list
+      if (ensurePatient && !seen.has(ensurePatient.id)) {
+        uniquePatients.push(ensurePatient);
       }
       uniquePatients.sort((a, b) => a.full_name.localeCompare(b.full_name));
       setPatients(uniquePatients);
@@ -167,7 +198,12 @@ export const DoctorReferrals = () => {
     setActionLoading(referralId);
     try {
       await doctorService.updateReferralStatus(referralId, status);
-      toast.success(`Referral ${status}`);
+      const messages = {
+        accepted: 'Referral accepted',
+        declined: 'Referral declined',
+        completed: 'Referral marked as completed',
+      };
+      toast.success(messages[status]);
       fetchReferrals();
     } catch (err: any) {
       toast.error(err?.message ?? 'Failed to update referral');
@@ -352,7 +388,12 @@ export const DoctorReferrals = () => {
         >
           <Inbox className="h-4 w-4" />
           Received
-          {received.length > 0 && (
+          {received.filter(r => r.status === 'pending').length > 0 && (
+            <span className="text-xs bg-amber-500/15 text-amber-600 rounded-full px-1.5 py-0.5 min-w-[20px] text-center font-semibold">
+              {received.filter(r => r.status === 'pending').length}
+            </span>
+          )}
+          {received.filter(r => r.status === 'pending').length === 0 && received.length > 0 && (
             <span className="text-xs bg-primary/10 text-primary rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
               {received.length}
             </span>
@@ -512,8 +553,8 @@ export const DoctorReferrals = () => {
                       </div>
                     )}
 
-                    {/* Mark completed for accepted referrals */}
-                    {tab === 'received' && ref.status === 'accepted' && (
+                    {/* Mark completed — available to either doctor once accepted */}
+                    {ref.status === 'accepted' && (
                       <div className="flex gap-2 pt-1">
                         <Button
                           size="sm"

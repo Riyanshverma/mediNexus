@@ -211,6 +211,12 @@ export async function listReferrals(
       .order('created_at', { ascending: false });
 
     if (sentError || receivedError) {
+      const errMsg = sentError?.message ?? receivedError?.message ?? '';
+      // If the table doesn't exist yet (migration not applied), return empty list gracefully
+      if (errMsg.includes('relation') || errMsg.includes('does not exist')) {
+        sendSuccess(res, { referrals: [] }, 'Referrals retrieved (table not yet available)');
+        return;
+      }
       throw new AppError('Failed to fetch referrals', 500);
     }
 

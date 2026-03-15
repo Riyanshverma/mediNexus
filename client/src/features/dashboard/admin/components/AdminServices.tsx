@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Stethoscope, Plus, Edit2, Trash2, Check, X } from 'lucide-react';
+import { Stethoscope, Plus, Edit2, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
