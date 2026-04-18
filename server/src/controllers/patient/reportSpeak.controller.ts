@@ -6,12 +6,17 @@ const pdfParse = pdfParseLib as unknown as (
 import { supabaseAdmin } from "../../config/supabase.js";
 import { requirePatient } from "../../utils/lookup.js";
 import { sendSuccess } from "../../utils/response.js";
+import { Groq } from "groq-sdk";
 import {
   AppError,
   BadRequestError,
   NotFoundError,
 } from "../../utils/errors.js";
 import { env } from "../../config/env.js";
+
+// ─── Clients ────────────────────────────────────────────────────────────
+
+const groq = new Groq({ apiKey: env.GROQ_API_KEY.trim() });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,10 +36,10 @@ const IMAGE_MODALITIES = new Set<DocumentType>(["xray", "mri", "ecg", "ct"]);
 
 const SYSTEM_PROMPTS_EN: Record<DocumentType, string> = {
   xray:
-    "You are a radiology assistant. A patient has uploaded a chest X-ray and wants to understand what it shows. " +
+    "You are a radiology assistant. A patient has uploaded an X-ray and wants to understand what it shows. " +
     "Analyse the image and describe the key findings in simple, patient-friendly language. " +
-    "Mention any visible abnormalities (e.g. consolidation, effusion, cardiomegaly, fractures), note normal-looking areas, " +
-    "and tell the patient what they should discuss with their doctor. " +
+    "First, identify the body part or area shown. Then mention any visible abnormalities (e.g. fractures, dislocations, consolidation, effusion), " +
+    "note normal-looking areas, and tell the patient what they should discuss with their doctor. " +
     "Do NOT make definitive diagnoses. Plain prose only — no bullet points, no asterisks, no markdown. " +
     'Speak directly to the patient using "your". Keep the response under 350 words.',
 
@@ -82,8 +87,9 @@ const SYSTEM_PROMPTS_EN: Record<DocumentType, string> = {
 
 const SYSTEM_PROMPTS_HI: Record<DocumentType, string> = {
   xray:
-    "You are a radiology assistant explaining a chest X-ray in simple Hinglish — a natural mix of Hindi and English the way educated Indians speak daily. " +
-    "Describe what the X-ray shows, mention any visible abnormalities in simple language, and tell the patient what to discuss with their doctor. " +
+    "You are a radiology assistant explaining an X-ray in simple Hinglish — a natural mix of Hindi and English the way educated Indians speak daily. " +
+    "First, identify identify which body part is shown in the image. Then, describe what the X-ray shows, mention any visible abnormalities in simple language, " +
+    "and tell the patient what to discuss with their doctor. " +
     "Do NOT make definitive diagnoses. Plain conversational prose only — no bullet points, no asterisks, no markdown. " +
     'Patient se directly "aap / aapka / aapki" use karke baat karo. Total response 350 words se kam rakho.',
 
@@ -160,34 +166,45 @@ async function extractTextFromPDF(reportUrl: string): Promise<string> {
   return parsed.text?.trim() ?? "";
 }
 
-// ─── Image modality analyser — Gemma 3 27B via OpenRouter ────────────────────
-// Handles: xray | mri | ecg | ct
-// Passes the image URL directly (no base64 conversion needed).
+/** Fetches the file at a URL and returns it as a base64 data URI. */
+async function fetchAsBase64DataUri(fileUrl: string): Promise<{ dataUri: string; mimeType: string }> {
+  const res: any = await fetch(fileUrl);
+  if (!res.ok) {
+    throw new AppError(
+      `Failed to fetch report file: ${res.status} ${res.statusText}`,
+      502,
+    );
+  }
+  const arrayBuf = await res.arrayBuffer();
+  const buffer = Buffer.from(arrayBuf);
+  const contentType =
+    res.headers.get("content-type")?.split(";")[0]?.trim() ?? "image/jpeg";
+  const dataUri = `data:${contentType};base64,${buffer.toString("base64")}`;
+  return { dataUri, mimeType: contentType };
+}
 
-async function analyseImageWithGemma(
+// ─── Image modality analyser — Llama 4 Scout via Groq ───────────────────────
+// Handles: xray | mri | ecg | ct
+// Uses base64 Data URI as Groq vision models expect images in that format.
+
+async function analyseImageWithGroq(
   imageUrl: string,
   docType: DocumentType,
   lang: Lang,
 ): Promise<string> {
-  const apiKey = env.OPENROUTER_API_KEY.trim();
   const systemPrompt =
     lang === "hi" ? SYSTEM_PROMPTS_HI[docType] : SYSTEM_PROMPTS_EN[docType];
 
-  console.log(`[reportSpeak] Calling Gemma 3 27B for image modality (${docType})`);
+  console.log(`[reportSpeak] Fetching file for Groq vision: ${imageUrl}`);
+  const { dataUri } = await fetchAsBase64DataUri(imageUrl);
 
-  const res : any = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://medinexus.app",
-      "X-Title": "mediNexus Report Audio Analysis",
-    },
-    body: JSON.stringify({
-      model: "google/gemma-3-27b-it:free",
+  console.log(`[reportSpeak] Calling Groq (Llama 4 Scout) for modality: ${docType}`);
+
+  try {
+    const chatCompletion = await groq.chat.completions.create({
       messages: [
         {
-          role: "user" as const,
+          role: "user",
           content: [
             {
               type: "text",
@@ -195,27 +212,25 @@ async function analyseImageWithGemma(
             },
             {
               type: "image_url",
-              image_url: { url: imageUrl },
+              image_url: { url: dataUri },
             },
           ],
         },
       ],
-      max_tokens: 600,
-    }),
-  });
+      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      temperature: 0.1,
+      max_completion_tokens: 1024,
+    });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error("[reportSpeak] Gemma 3 27B (vision) error:", errText);
-    throw new AppError("Image analysis service returned an error", 502);
+    const reply = chatCompletion.choices[0]?.message?.content?.trim() ?? "";
+    if (!reply) throw new AppError("Groq returned an empty response", 502);
+
+    console.log("[reportSpeak] Groq reply summary:", reply.slice(0, 100), "...");
+    return reply;
+  } catch (err: any) {
+    console.error("[reportSpeak] Groq analysis error:", err?.message || err);
+    throw new AppError("Vision analysis service returned an error", 502);
   }
-
-  const data = (await res.json()) as any;
-  const reply: string =
-    data?.choices?.[0]?.message?.content?.trim() ??
-    "Analysis could not be generated. Please try again.";
-  console.log("[reportSpeak] Gemma 3 27B reply:", reply.slice(0, 120), "...");
-  return reply;
 }
 
 // ─── Text-based report analyser — Trinity via OpenRouter ─────────────────────
@@ -281,8 +296,8 @@ async function analyseReport(
   lang: Lang,
 ): Promise<string> {
   if (IMAGE_MODALITIES.has(docType)) {
-    // ── Image modality: Gemma 3 27B vision (URL passed directly) ─────
-    return analyseImageWithGemma(reportUrl, docType, lang);
+    // ── Image modality: LLama 4 Scout via Groq ───────────────────────
+    return analyseImageWithGroq(reportUrl, docType, lang);
   } else {
     // ── Text-based report: extract PDF text → Trinity ─────────────────
     console.log(`[reportSpeak] Text-based report (${docType}) — extracting PDF text`);
@@ -293,11 +308,11 @@ async function analyseReport(
       return analyseTextWithTrinity(extractedText, reportName, docType, lang);
     }
 
-    // No text found (scanned / image-only PDF) — use Gemma vision as fallback
+    // No text found (scanned / image-only PDF) — use Groq vision as fallback
     console.warn(
-      "[reportSpeak] No extractable text in PDF, falling back to Gemma 3 27B vision",
+      "[reportSpeak] No extractable text in PDF, falling back to Groq vision",
     );
-    return analyseImageWithGemma(reportUrl, docType, lang);
+    return analyseImageWithGroq(reportUrl, docType, lang);
   }
 }
 

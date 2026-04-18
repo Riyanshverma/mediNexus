@@ -13,6 +13,7 @@ interface EnvConfig {
   OPENROUTER_API_KEY: string;
   SARVAM_API_KEY: string;
   HF_TOKEN: string;
+  GROQ_API_KEY: string;
   FRONTEND_URL: string;
   DATABASE_URL: string | undefined;
 }
@@ -38,6 +39,7 @@ export const env: EnvConfig = {
   OPENROUTER_API_KEY: getEnvVar('OPENROUTER_API_KEY'),
   SARVAM_API_KEY: getEnvVar('SARVAM_API_KEY'),
   HF_TOKEN: getEnvVar('HF_TOKEN'),
+  GROQ_API_KEY: getEnvVar('GROQ_API_KEY'),
   FRONTEND_URL: getEnvVar('FRONTEND_URL', 'http://localhost:5173'),
   DATABASE_URL: getOptionalEnvVar('DATABASE_URL'),
 };
