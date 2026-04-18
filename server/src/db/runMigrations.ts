@@ -62,6 +62,54 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       ALTER TABLE referrals ENABLE ROW LEVEL SECURITY;
     `,
   },
+  {
+    id: '007_report_analysis_cache_and_category',
+    sql: `
+      -- ── A. report_analysis_cache table ─────────────────────────────────────
+      CREATE TABLE IF NOT EXISTS report_analysis_cache (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        report_id     UUID NOT NULL REFERENCES patient_reports(id) ON DELETE CASCADE,
+        lang          TEXT NOT NULL CHECK (lang IN ('en', 'hi')),
+        doc_type      TEXT NOT NULL,
+        analysis_text TEXT NOT NULL,
+        audio_base64  TEXT NOT NULL,
+        audio_mime    TEXT NOT NULL DEFAULT 'audio/mpeg',
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (report_id, lang, doc_type)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_report_analysis_cache_report
+        ON report_analysis_cache(report_id);
+
+      ALTER TABLE report_analysis_cache ENABLE ROW LEVEL SECURITY;
+
+      -- ── B. Rename report_type → report_category + add new report_type TEXT ──
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'report_category') THEN
+          CREATE TYPE report_category AS ENUM ('lab', 'radiology', 'pathology', 'discharge_summary', 'other');
+        END IF;
+      END
+      $$;
+
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'patient_reports' AND column_name = 'report_category'
+        ) THEN
+          ALTER TABLE patient_reports ADD COLUMN report_category report_category;
+          UPDATE patient_reports SET report_category = report_type::text::report_category;
+          ALTER TABLE patient_reports ALTER COLUMN report_category SET NOT NULL;
+          ALTER TABLE patient_reports ALTER COLUMN report_category SET DEFAULT 'other';
+          ALTER TABLE patient_reports DROP COLUMN report_type;
+          ALTER TABLE patient_reports ADD COLUMN report_type TEXT NOT NULL DEFAULT 'other';
+          DROP TYPE IF EXISTS report_type;
+        END IF;
+      END
+      $$;
+    `,
+  },
 ];
 
 // ─── Runner ──────────────────────────────────────────────────────────────────
@@ -86,6 +134,12 @@ export async function runMigrations(): Promise<void> {
       );
     `);
 
+    // Map of migration id → a table name to verify actually exists after recording
+    const VERIFY_TABLE: Record<string, string> = {
+      '006_document_grants_and_referrals': 'referrals',
+      '007_report_analysis_cache_and_category': 'report_analysis_cache',
+    };
+
     for (const migration of MIGRATIONS) {
       const { rows } = await pool.query(
         'SELECT id FROM schema_migrations WHERE id = $1',
@@ -93,19 +147,23 @@ export async function runMigrations(): Promise<void> {
       );
 
       if (rows.length > 0) {
-        // Migration recorded as applied — but verify the referrals table actually exists
-        // (handles the case where PostgREST schema cache was stale on a previous run)
-        const { rows: tableCheck } = await pool.query(
-          `SELECT to_regclass('public.referrals') AS tbl`
-        );
-        const tableExists = tableCheck[0]?.tbl != null;
-        if (tableExists) {
+        const verifyTable = VERIFY_TABLE[migration.id];
+        if (verifyTable) {
+          const { rows: tableCheck } = await pool.query(
+            `SELECT to_regclass('public.${verifyTable}') AS tbl`
+          );
+          const tableExists = tableCheck[0]?.tbl != null;
+          if (tableExists) {
+            console.log(`[migrations] ${migration.id} — already applied, skipping.`);
+            continue;
+          }
+          // Table missing despite being recorded — re-apply
+          console.log(`[migrations] ${migration.id} — recorded but table missing, re-applying...`);
+          await pool.query(`DELETE FROM schema_migrations WHERE id = $1`, [migration.id]);
+        } else {
           console.log(`[migrations] ${migration.id} — already applied, skipping.`);
           continue;
         }
-        // Table missing despite being recorded — re-apply and notify PostgREST
-        console.log(`[migrations] ${migration.id} — recorded but table missing, re-applying...`);
-        await pool.query(`DELETE FROM schema_migrations WHERE id = $1`, [migration.id]);
       }
 
       console.log(`[migrations] Applying ${migration.id}...`);

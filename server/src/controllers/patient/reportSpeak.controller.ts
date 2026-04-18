@@ -27,19 +27,6 @@ type DocumentType = "xray" | "mri" | "ecg" | "ct" | "report" | "default";
 /** The set of document types that are image-based and require vision AI. */
 const IMAGE_MODALITIES = new Set<DocumentType>(["xray", "mri", "ecg", "ct"]);
 
-// ─── In-memory cache ─────────────────────────────────────────────────────────
-
-interface CacheEntry {
-  analysisText: string;
-  audioBase64: string;
-  audioMime: string;
-}
-
-/** Cache key includes language & document type so results are stored separately. */
-const reportCache = new Map<string, CacheEntry>();
-const cacheKey = (reportId: string, lang: Lang, docType: DocumentType) =>
-  `${reportId}:${lang}:${docType}`;
-
 // ─── System prompts (English) per document type ───────────────────────────────
 
 const SYSTEM_PROMPTS_EN: Record<DocumentType, string> = {
@@ -136,10 +123,31 @@ const SYSTEM_PROMPTS_HI: Record<DocumentType, string> = {
     'Plain conversational prose only — no bullet points, no asterisks, no markdown. Patient se directly "aap / aapka / aapki" use karke baat karo. Total response 350 words se kam rakho.',
 };
 
+// ─── Map report_type DB value → DocumentType for analysis prompts ─────────────
+
+/** Maps the `report_type` TEXT value from DB to the DocumentType used for prompts. */
+function resolveDocumentType(dbReportType: string | null | undefined): DocumentType {
+  switch (dbReportType) {
+    case "xray":
+      return "xray";
+    case "mri":
+      return "mri";
+    case "ecg":
+      return "ecg";
+    case "ct":
+      return "ct";
+    case "blood_test":
+    case "urine_test":
+      return "report"; // text-based analysis
+    default:
+      return "default";
+  }
+}
+
 // ─── PDF text extraction ──────────────────────────────────────────────────────
 
 async function extractTextFromPDF(reportUrl: string): Promise<string> {
-  const res = await fetch(reportUrl);
+  const res : any = await fetch(reportUrl);
   if (!res.ok) {
     throw new AppError(
       `Failed to fetch report PDF: ${res.status} ${res.statusText}`,
@@ -167,7 +175,7 @@ async function analyseImageWithGemma(
 
   console.log(`[reportSpeak] Calling Gemma 3 27B for image modality (${docType})`);
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res : any = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -228,7 +236,7 @@ async function analyseTextWithTrinity(
 
   console.log(`[reportSpeak] Calling Trinity for text-based report (${docType})`);
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const res : any = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -302,7 +310,7 @@ async function textToSpeech(
 ): Promise<{ audioBase64: string; audioMime: string }> {
   const apiKey = env.SARVAM_API_KEY.trim();
 
-  const res = await fetch("https://api.sarvam.ai/text-to-speech/stream", {
+  const res: any= await fetch("https://api.sarvam.ai/text-to-speech/stream", {
     method: "POST",
     headers: {
       "api-subscription-key": apiKey,
@@ -368,37 +376,12 @@ export async function reportSpeak(
     const rawLang = req.body?.lang;
     const lang: Lang = rawLang === "hi" ? "hi" : "en";
 
-    const rawDocType = req.body?.document_type as string | undefined;
-    const validDocTypes: DocumentType[] = ["xray", "mri", "ecg", "ct", "report", "default"];
-    const docType: DocumentType =
-      rawDocType && validDocTypes.includes(rawDocType as DocumentType) ? (rawDocType as DocumentType)
-        : "default"; // !Change this in frontend
-
-    console.log("The doc type is ", docType);
-        
-
-    // ── 1. Cache check ──────────────────────────────────────────────────
-    const key = cacheKey(reportId, lang, docType);
-    const cached = reportCache.get(key);
-    if (cached) {
-      sendSuccess(
-        res,
-        {
-          audio_base64: cached.audioBase64,
-          audio_mime: cached.audioMime,
-          analysis_text: cached.analysisText,
-        },
-        "Report audio (cached)",
-      );
-      return;
-    }
-
-    // ── 2. Verify patient owns the report ───────────────────────────────
+    // ── 1. Verify patient owns the report ───────────────────────────────
     const patient = await requirePatient(userId);
 
     const { data: report, error: reportErr } = await supabaseAdmin
       .from("patient_reports")
-      .select("id, report_name, report_url, patient_id")
+      .select("id, report_name, report_url, patient_id, report_type")
       .eq("id", reportId)
       .single();
 
@@ -407,7 +390,43 @@ export async function reportSpeak(
     if (!report.report_url)
       throw new BadRequestError("Report has no associated file URL");
 
-    // ── 3. Analyse ──────────────────────────────────────────────────────
+    // Determine doc type: prefer DB report_type, fall back to request body, then 'default'
+    const rawDocType = req.body?.document_type as string | undefined;
+    const validDocTypes: DocumentType[] = ["xray", "mri", "ecg", "ct", "report", "default"];
+    const dbDocType = resolveDocumentType(report.report_type);
+    const docType: DocumentType =
+      dbDocType !== "default"
+        ? dbDocType
+        : rawDocType && validDocTypes.includes(rawDocType as DocumentType)
+          ? (rawDocType as DocumentType)
+          : "default";
+
+    console.log(`[reportSpeak] report_type from DB: "${report.report_type}", resolved docType: "${docType}"`);
+
+    // ── 2. Check DB cache (report_analysis_cache) ───────────────────────
+    const { data: cached, error: cacheErr } = await (supabaseAdmin as any)
+      .from("report_analysis_cache")
+      .select("analysis_text, audio_base64, audio_mime")
+      .eq("report_id", reportId)
+      .eq("lang", lang)
+      .eq("doc_type", docType)
+      .maybeSingle();
+
+    if (!cacheErr && cached) {
+      console.log(`[reportSpeak] Cache hit for report ${reportId} (lang=${lang}, docType=${docType})`);
+      sendSuccess(
+        res,
+        {
+          audio_base64: cached.audio_base64,
+          audio_mime: cached.audio_mime,
+          analysis_text: cached.analysis_text,
+        },
+        "Report audio (cached)",
+      );
+      return;
+    }
+
+    // ── 3. Analyse (LLM) ───────────────────────────────────────────────
     console.log(
       `[reportSpeak] Analysing report ${reportId} (type=${docType}, lang=${lang})`,
     );
@@ -427,8 +446,29 @@ export async function reportSpeak(
     );
     const { audioBase64, audioMime } = await textToSpeech(analysisText, lang);
 
-    // ── 5. Cache & respond ──────────────────────────────────────────────
-    reportCache.set(key, { analysisText, audioBase64, audioMime });
+    // ── 5. Store in DB cache ────────────────────────────────────────────
+    const { error: insertCacheErr } = await (supabaseAdmin as any)
+      .from("report_analysis_cache")
+      .upsert(
+        {
+          report_id: reportId,
+          lang,
+          doc_type: docType,
+          analysis_text: analysisText,
+          audio_base64: audioBase64,
+          audio_mime: audioMime,
+        },
+        { onConflict: "report_id,lang,doc_type" },
+      );
+
+    if (insertCacheErr) {
+      // Non-fatal — log but still return the result
+      console.error("[reportSpeak] Failed to cache analysis:", insertCacheErr.message);
+    } else {
+      console.log(`[reportSpeak] Cached analysis for report ${reportId} (lang=${lang}, docType=${docType})`);
+    }
+
+    // ── 6. Respond ─────────────────────────────────────────────────────
     sendSuccess(
       res,
       {

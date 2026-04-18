@@ -446,7 +446,11 @@ export const PatientHealthPassport = () => {
                         <div>
                           <p className="font-medium">{report.report_name}</p>
                           <p className="text-sm text-muted-foreground capitalize">
-                            {report.report_type.replace('_', ' ')} · {(report as any).hospitals?.name ?? ''} ·{' '}
+                            {(report.report_category ?? report.report_type ?? '').replace('_', ' ')}
+                            {report.report_type && report.report_type !== 'other'
+                              ? ` · ${report.report_type.toUpperCase()}`
+                              : ''}
+                            {' · '}{(report as any).hospitals?.name ?? ''} ·{' '}
                             {format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
                           </p>
                         </div>
@@ -1051,7 +1055,11 @@ export const PatientHealthPassport = () => {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{report.report_name}</p>
                         <p className="text-xs text-muted-foreground capitalize">
-                          {report.report_type.replace('_', ' ')} ·{' '}
+                          {(report.report_category ?? report.report_type ?? '').replace('_', ' ')}
+                          {report.report_type && report.report_type !== 'other'
+                            ? ` · ${report.report_type.toUpperCase()}`
+                            : ''}
+                          {' · '}
                           {format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
                         </p>
                       </div>
