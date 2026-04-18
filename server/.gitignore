@@ -21,3 +21,4 @@ mediNexus-MVP.pdf
 # Logs
 *.log
 npm-debug.log*
+/src/generated/prisma
