@@ -15,6 +15,7 @@ interface EnvConfig {
   HF_TOKEN: string;
   GROQ_API_KEY: string;
   FRONTEND_URL: string;
+  FRONTEND_URLS: string[];
   DATABASE_URL: string | undefined;
 }
 
@@ -30,6 +31,16 @@ function getOptionalEnvVar(key: string): string | undefined {
   return process.env[key];
 }
 
+function parseCsvEnvVar(key: string): string[] {
+  const raw = process.env[key];
+  if (!raw) return [];
+
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 export const env: EnvConfig = {
   PORT: parseInt(getEnvVar('PORT', '3000'), 10),
   NODE_ENV: getEnvVar('NODE_ENV', 'development'),
@@ -41,5 +52,6 @@ export const env: EnvConfig = {
   HF_TOKEN: getEnvVar('HF_TOKEN'),
   GROQ_API_KEY: getEnvVar('GROQ_API_KEY'),
   FRONTEND_URL: getEnvVar('FRONTEND_URL', 'http://localhost:5173'),
+  FRONTEND_URLS: parseCsvEnvVar('FRONTEND_URLS'),
   DATABASE_URL: getOptionalEnvVar('DATABASE_URL'),
 };

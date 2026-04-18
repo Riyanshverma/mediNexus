@@ -116,7 +116,7 @@ export const PatientAppointments = ({ setActiveTab }: { setActiveTab?: (tab: str
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
+    <div className="p-8 animate-in fade-in duration-500 w-[calc(100%-2rem)] max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-light tracking-tight">My Appointments</h1>
         <div className="flex items-center gap-2">

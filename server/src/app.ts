@@ -8,14 +8,31 @@ import { env } from './config/env.js';
 
 const app = express();
 
+const allowedOrigins = new Set(
+  [env.FRONTEND_URL, ...env.FRONTEND_URLS, 'http://localhost:5173', 'http://127.0.0.1:5173']
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
+
+const corsOptions: cors.CorsOptions = {
+  origin(origin, callback) {
+    // Allow non-browser clients (Postman, curl, server-to-server)
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, allowedOrigins.has(origin));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
 // ─── Global Middleware ──────────────────────────────────────
 app.use(helmet());
-app.use(
-  cors({
-    origin: env.FRONTEND_URL,
-    credentials: true,
-  })
-);
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

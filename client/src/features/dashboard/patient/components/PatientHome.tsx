@@ -1,22 +1,21 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Clock, FileText, Search, ChevronRight, Activity, Stethoscope } from 'lucide-react';
+import {
+  Calendar,
+  Contact,
+  BriefcaseMedical,
+  Search,
+  Syringe,
+  ShieldPlus,
+  Heart,
+  MessageSquareShare,
+  ArrowRight
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { patientService, type PatientAppointment } from '@/services/patient.service';
-import { format, parseISO } from 'date-fns';
 import { useAppointmentRefresh } from '@/hooks/useAppointmentRefresh';
-
-function statusColor(status: string) {
-  const map: Record<string, string> = {
-    booked: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-    checked_in: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
-    in_progress: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
-    completed: 'bg-green-500/10 text-green-600 dark:text-green-400',
-    cancelled: 'bg-red-500/10 text-red-500',
-    no_show: 'bg-muted text-muted-foreground',
-  };
-  return map[status] ?? 'bg-muted text-muted-foreground';
-}
+import { toast } from 'sonner';
 
 export const PatientHome = ({ setActiveTab }: { setActiveTab?: (tab: string) => void }) => {
   const navigate = useNavigate();
@@ -35,135 +34,159 @@ export const PatientHome = ({ setActiveTab }: { setActiveTab?: (tab: string) => 
     fetchUpcoming();
   }, [fetchUpcoming]);
 
-  // Re-fetch whenever a booking is confirmed anywhere in the app
   useAppointmentRefresh(fetchUpcoming);
 
-  const nextAppt = upcoming[0] ?? null;
-
   return (
-    <div className="p-8 animate-in fade-in duration-500 max-w-5xl mx-auto space-y-8">
-      {/* Welcome */}
-      <div>
-        <h1 className="text-3xl font-light tracking-tight font-serif">Welcome Back</h1>
-        <p className="text-muted-foreground mt-2 text-sm">Here's a snapshot of your health activity.</p>
+    <div className="p-8 animate-in fade-in duration-700 w-[calc(100%-2rem)] max-w-7xl mx-auto pb-32">
+      
+      {/* ── Welcome & System Status ── */}
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-12">
+        <div className="max-w-2xl">
+          <h1 className="text-4xl font-bold tracking-tight text-white mb-3">Welcome Back, Dev</h1>
+          <p className="text-[#a1a1aa] text-base leading-relaxed">
+            You have no clinical emergencies today. Your current health metrics are within the optimal threshold.
+          </p>
+        </div>
+        
+
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-card rounded-xl border p-6 hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Upcoming Appointments</h3>
-            <Calendar className="h-4 w-4 text-muted-foreground/50" />
+      {/* ── Top Main Cards Grid ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-14">
+        
+        {/* Card 1: Appointments */}
+        <div className="relative bg-[#161616] border border-white/5 rounded-2xl p-6 overflow-hidden group">
+          <div className="flex justify-between items-start mb-6 z-10 relative">
+            <Calendar className="w-5 h-5 text-[#c4b5fd]" />
+            <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded-full bg-white/5 text-[#a1a1aa]">
+              Active Queue
+            </span>
           </div>
-          <p className="text-4xl font-light mt-4">{loading ? '—' : upcoming.length}</p>
-          <p className="text-xs text-muted-foreground mt-1">scheduled</p>
-        </div>
-        <div
-          className="bg-card rounded-xl border p-6 cursor-pointer hover:shadow-md hover:border-primary/40 transition-all"
-          onClick={() => setActiveTab?.('passport')}
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Health Passport</h3>
-            <FileText className="h-4 w-4 text-muted-foreground/50" />
-          </div>
-          <p className="text-sm text-muted-foreground mt-4">View records, prescriptions & grants</p>
-        </div>
-        <div
-          className="bg-card rounded-xl border p-6 cursor-pointer hover:shadow-md hover:border-primary/40 transition-all"
-          onClick={() => navigate('/patient/discover')}
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Find a Doctor</h3>
-            <Search className="h-4 w-4 text-muted-foreground/50" />
-          </div>
-          <p className="text-sm text-muted-foreground mt-4">Search hospitals and book slots</p>
-        </div>
-      </div>
-
-      {/* Next appointment */}
-      {!loading && nextAppt && (
-        <div className="bg-card rounded-xl border p-6 space-y-4 hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium text-lg">Next Appointment</h2>
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setActiveTab?.('appointments')}>
-              View all <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-6 p-4 rounded-lg bg-muted/30">
-            <div className="flex-1 space-y-2">
-              <p className="font-medium text-lg">{nextAppt.doctors?.full_name ?? 'Doctor'}</p>
-              <p className="text-sm text-muted-foreground">{nextAppt.doctors?.specialisation}</p>
-              <p className="text-sm text-muted-foreground">{nextAppt.hospitals?.name}, {nextAppt.hospitals?.city}</p>
-            </div>
-            <div className="space-y-2 text-sm">
-              {nextAppt.appointment_slots && (
-                <>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    {format(parseISO(nextAppt.appointment_slots.slot_start), 'EEE, MMM d, yyyy')}
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Clock className="h-4 w-4" />
-                    {format(parseISO(nextAppt.appointment_slots.slot_start), 'h:mm a')}
-                    {' – '}
-                    {format(parseISO(nextAppt.appointment_slots.slot_end), 'h:mm a')}
-                  </div>
-                </>
-              )}
-              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColor(nextAppt.status)}`}>
-                {nextAppt.status.replace('_', ' ')}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Quick actions */}
-      <div>
-        <h2 className="font-medium text-lg mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Button variant="outline" className="h-14 flex items-center gap-3 justify-start px-5 rounded-lg hover:bg-muted/50" onClick={() => navigate('/patient/discover')}>
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Search className="h-5 w-5 text-primary" />
-            </div>
-            <span className="font-medium">Find a Doctor</span>
-          </Button>
-          <Button variant="outline" className="h-14 flex items-center gap-3 justify-start px-5 rounded-lg hover:bg-muted/50" onClick={() => navigate('/patient/services')}>
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Stethoscope className="h-5 w-5 text-primary" />
-            </div>
-            <span className="font-medium">Book a Service</span>
-          </Button>
-          <Button variant="outline" className="h-14 flex items-center gap-3 justify-start px-5 rounded-lg hover:bg-muted/50" onClick={() => setActiveTab?.('appointments')}>
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Calendar className="h-5 w-5 text-primary" />
-            </div>
-            <span className="font-medium">My Appointments</span>
-          </Button>
-          <Button variant="outline" className="h-14 flex items-center gap-3 justify-start px-5 rounded-lg hover:bg-muted/50" onClick={() => setActiveTab?.('passport')}>
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-primary" />
-            </div>
-            <span className="font-medium">Health Passport</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Health tips */}
-      <div className="bg-gradient-to-br from-primary/5 to-primary/10 rounded-xl border p-6">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <Activity className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h3 className="font-medium text-lg mb-1">Health Tip of the Day</h3>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              Regular health check-ups can help detect problems early before they become more serious. 
-              Schedule your annual check-up today!
+          <div className="relative z-10">
+            <h3 className="text-lg font-semibold text-white mb-2">Upcoming Appointments</h3>
+            <p className="text-sm text-[#71717a] leading-relaxed">
+              No scheduled consultations for the next 24 hours.
             </p>
           </div>
+          {/* Subtle background number watermark */}
+          <div className="absolute -bottom-8 -left-2 text-[120px] font-black text-white/[0.02] leading-none pointer-events-none">
+            {upcoming.length}
+          </div>
+        </div>
+
+        {/* Card 2: Health Passport */}
+        <div className="relative bg-[#161616] border border-white/5 rounded-2xl p-6 group cursor-pointer hover:bg-[#1a1a1a] transition-colors" onClick={() => setActiveTab?.('passport')}>
+          <div className="mb-6">
+            <Contact className="w-5 h-5 text-[#c4b5fd]" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">Health Passport</h3>
+            <p className="text-sm text-[#71717a] leading-relaxed mb-6">
+              Access your immutable medical history, immunization records, and diagnostic reports.
+            </p>
+            <div className="inline-flex items-center gap-2 text-sm font-medium text-[#c084fc] group-hover:text-[#d8b4fe] transition-colors">
+              View full records <ArrowRight className="w-4 h-4" />
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Find a Doctor */}
+        <div className="relative bg-[#161616] border border-white/5 rounded-2xl p-6 cursor-pointer hover:bg-[#1a1a1a] transition-colors" onClick={() => navigate('/patient/discover')}>
+          <div className="mb-6">
+            <BriefcaseMedical className="w-5 h-5 text-[#c4b5fd]" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-2">Find a Doctor</h3>
+            <p className="text-sm text-[#71717a] leading-relaxed mb-5">
+              Search across our network of Clinical Luminaries and specialized hospitals.
+            </p>
+            <div className="relative">
+              <Input 
+                placeholder="Search specialized clinic..." 
+                className="bg-black/40 border-white/5 rounded-xl h-10 px-4 text-sm focus-visible:ring-[#5d0ec0]/50 placeholder:text-[#52525b]"
+              />
+              <Search className="w-3.5 h-3.5 absolute right-3 top-3 text-[#52525b]" />
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ── Clinical Quick Actions Divider ── */}
+      <div className="text-center mb-6">
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#52525b]">
+          Clinical Quick Actions
+        </span>
+      </div>
+
+      {/* ── Quick Actions Horizontal Bar ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-14">
+        
+        <Button 
+          variant="outline" 
+          className="h-14 bg-[#18181b] border-white/5 hover:bg-[#27272a] hover:text-white text-[#d4d4d8] rounded-2xl shadow-sm transition-all"
+          onClick={() => navigate('/patient/discover')}
+        >
+          <Search className="w-4 h-4 mr-2 text-[#a1a1aa]" />
+          <span className="font-semibold text-[13px]">Find a Doctor</span>
+        </Button>
+
+        <Button 
+          variant="outline" 
+          className="h-14 bg-[#18181b] border-white/5 hover:bg-[#27272a] hover:text-white text-[#d4d4d8] rounded-2xl shadow-sm transition-all"
+          onClick={() => navigate('/patient/services')}
+        >
+          <Syringe className="w-4 h-4 mr-2 text-[#a1a1aa]" />
+          <span className="font-semibold text-[13px]">Book a Service</span>
+        </Button>
+
+        <Button 
+          variant="outline" 
+          className="h-14 bg-[#18181b] border-white/5 hover:bg-[#27272a] hover:text-white text-[#d4d4d8] rounded-2xl shadow-sm transition-all"
+          onClick={() => setActiveTab?.('appointments')}
+        >
+          <Calendar className="w-4 h-4 mr-2 text-[#a1a1aa]" />
+          <span className="font-semibold text-[13px]">My Appointments</span>
+        </Button>
+
+        <Button 
+          variant="outline" 
+          className="h-14 bg-[#18181b] border-white/5 hover:bg-[#27272a] hover:text-white text-[#d4d4d8] rounded-2xl shadow-sm transition-all"
+          onClick={() => setActiveTab?.('passport')}
+        >
+          <ShieldPlus className="w-4 h-4 mr-2 text-[#a1a1aa]" />
+          <span className="font-semibold text-[13px]">Health Passport</span>
+        </Button>
+
+      </div>
+
+      {/* ── Health Tip of the Day ── */}
+      <div className="bg-[#141414] border border-white/5 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8 hover:border-white/10 transition-colors">
+        <div className="w-16 h-16 rounded-2xl bg-[#3f2025] border border-[#5c2a32] flex shrink-0 items-center justify-center shadow-inner">
+          <Heart className="w-7 h-7 text-[#fb7185] fill-[#fb7185]/20" />
+        </div>
+        
+        <div className="flex-1 text-center sm:text-left">
+          <h3 className="text-[#fb7185] font-semibold text-lg mb-2">Health Tip of the Day</h3>
+          <p className="text-[#a1a1aa] text-[15px] leading-relaxed max-w-3xl">
+            Maintaining a consistent sleep cycle of 7-9 hours per day enhances cognitive recovery and regulates your resting heart rate. Try setting a "wind-down" alert 30 minutes before bed.
+          </p>
+        </div>
+
+        <div className="flex-shrink-0 mt-4 sm:mt-0 self-center">
+          <Button 
+            variant="secondary" 
+            className="bg-[#27272a] hover:bg-[#3f3f46] text-white rounded-full px-6 text-xs font-bold tracking-wider uppercase h-10"
+            onClick={() => toast.info('Detailed insights module coming soon!')}
+          >
+            More Insights
+          </Button>
         </div>
       </div>
+
+
+
     </div>
   );
 };
+

@@ -353,7 +353,7 @@ export const PatientHealthPassport = () => {
           50%       { transform: scaleY(1); }
         }
       `}</style>
-      <div className="p-8 animate-in fade-in duration-500 max-w-4xl mx-auto">
+      <div className="p-8 animate-in fade-in duration-500 w-[calc(100%-2rem)] max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-light tracking-tight">Health Passport</h1>
         </div>

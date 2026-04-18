@@ -1,5 +1,6 @@
 import { Toaster } from '@/components/ui/sonner';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from 'next-themes';
 import { AuthProvider } from '@/context/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicOnlyRoute from '@/components/PublicOnlyRoute';
@@ -10,10 +11,11 @@ import PatientDiscover from '@/features/discover/PatientDiscover';
 import PatientServiceBooking from '@/features/discover/PatientServiceBooking';
 
 const App = () => (
-  <Router>
-    <AuthProvider>
-      <div className="min-h-screen bg-background text-foreground">
-        <Routes>
+  <ThemeProvider attribute="class" defaultTheme="dark">
+    <Router>
+      <AuthProvider>
+        <div className="min-h-screen bg-background text-foreground">
+          <Routes>
           {/* ── Public routes ───────────────────────────────────────────── */}
           <Route path="/" element={<LandingPage />} />
           <Route
@@ -81,9 +83,10 @@ const App = () => (
         </Routes>
 
         <Toaster position="bottom-right" theme="dark" richColors={true} />
-      </div>
-    </AuthProvider>
-  </Router>
+        </div>
+      </AuthProvider>
+    </Router>
+  </ThemeProvider>
 );
 
 export default App;
