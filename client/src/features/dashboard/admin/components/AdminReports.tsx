@@ -31,13 +31,24 @@ import { format, parseISO } from 'date-fns';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ReportType = 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
+type ReportCategory = 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
+type ReportType = 'ecg' | 'xray' | 'mri' | 'ct' | 'blood_test' | 'urine_test' | 'other';
 
-const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+const REPORT_CATEGORY_LABELS: Record<ReportCategory, string> = {
   lab: 'Lab Report',
   radiology: 'Radiology',
   pathology: 'Pathology',
   discharge_summary: 'Discharge Summary',
+  other: 'Other',
+};
+
+const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+  ecg: 'ECG',
+  xray: 'X-Ray',
+  mri: 'MRI',
+  ct: 'CT Scan',
+  blood_test: 'Blood Test',
+  urine_test: 'Urine Test',
   other: 'Other',
 };
 
@@ -60,6 +71,7 @@ export const AdminReports = () => {
 
   // ── Upload form ──
   const [reportName, setReportName] = useState('');
+  const [reportCategory, setReportCategory] = useState<ReportCategory | ''>('');
   const [reportType, setReportType] = useState<ReportType | ''>('');
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -118,6 +130,7 @@ export const AdminReports = () => {
 
   const resetForm = () => {
     setReportName('');
+    setReportCategory('');
     setReportType('');
     setFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -145,6 +158,7 @@ export const AdminReports = () => {
     e.preventDefault();
     if (!selectedPatient) return toast.error('Please select a patient first.');
     if (!reportName.trim()) return toast.error('Report name is required.');
+    if (!reportCategory) return toast.error('Report category is required.');
     if (!reportType) return toast.error('Report type is required.');
     if (!file) return toast.error('Please choose a file to upload.');
 
@@ -154,6 +168,7 @@ export const AdminReports = () => {
     try {
       await uploadPatientReport(selectedPatient.id, {
         report_name: reportName.trim(),
+        report_category: reportCategory,
         report_type: reportType,
         file,
       });
@@ -258,23 +273,45 @@ export const AdminReports = () => {
               />
             </div>
 
-            {/* Report type */}
-            <div className="space-y-1.5">
-              <Label>Report Type</Label>
-              <Select value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select report type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.entries(REPORT_TYPE_LABELS) as [ReportType, string][]).map(
-                    ([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    )
-                  )}
-                </SelectContent>
-              </Select>
+            {/* Report Category + Report Type side by side */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Report Category */}
+              <div className="space-y-1.5">
+                <Label>Report Category</Label>
+                <Select value={reportCategory} onValueChange={(v) => setReportCategory(v as ReportCategory)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.entries(REPORT_CATEGORY_LABELS) as [ReportCategory, string][]).map(
+                      ([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Report Type */}
+              <div className="space-y-1.5">
+                <Label>Report Type</Label>
+                <Select value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.entries(REPORT_TYPE_LABELS) as [ReportType, string][]).map(
+                      ([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* File picker */}
@@ -364,7 +401,12 @@ export const AdminReports = () => {
                     <div>
                       <p className="text-sm font-medium">{report.report_name}</p>
                       <p className="text-xs text-muted-foreground capitalize">
-                        {report.report_type.replace('_', ' ')} ·{' '}
+                        {(report.report_category ?? '').replace('_', ' ')}
+                        {report.report_type && report.report_type !== 'other'
+                          ? ` · ${(REPORT_TYPE_LABELS as Record<string, string>)[report.report_type] ?? report.report_type}`
+                          : ''
+                        }
+                        {' · '}
                         {format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
                       </p>
                     </div>

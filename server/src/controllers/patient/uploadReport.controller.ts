@@ -27,13 +27,27 @@ const upload = multer({
 
 export const uploadReportMiddleware = upload.single('file');
 
-// ─── Valid report types ───────────────────────────────────────────────────────
+// ─── Valid report categories (was previously "report type") ───────────────────
 
-const VALID_REPORT_TYPES = [
+const VALID_REPORT_CATEGORIES = [
   'lab',
   'radiology',
   'pathology',
   'discharge_summary',
+  'other',
+] as const;
+
+type ReportCategory = (typeof VALID_REPORT_CATEGORIES)[number];
+
+// ─── Valid report types (modality) ────────────────────────────────────────────
+
+const VALID_REPORT_TYPES = [
+  'ecg',
+  'xray',
+  'mri',
+  'ct',
+  'blood_test',
+  'urine_test',
   'other',
 ] as const;
 
@@ -67,9 +81,16 @@ export async function uploadPatientReport(
 
     // Validate body fields
     const reportName = (req.body?.report_name ?? '').trim();
-    const reportType = (req.body?.report_type ?? '').trim() as ReportType;
+    const reportCategory = (req.body?.report_category ?? '').trim() as ReportCategory;
+    const reportType = (req.body?.report_type ?? 'other').trim() as ReportType;
 
     if (!reportName) throw new AppError('report_name is required', 400);
+    if (!VALID_REPORT_CATEGORIES.includes(reportCategory)) {
+      throw new AppError(
+        `report_category must be one of: ${VALID_REPORT_CATEGORIES.join(', ')}`,
+        400
+      );
+    }
     if (!VALID_REPORT_TYPES.includes(reportType)) {
       throw new AppError(
         `report_type must be one of: ${VALID_REPORT_TYPES.join(', ')}`,
@@ -105,11 +126,12 @@ export async function uploadPatientReport(
     const reportUrl = urlData.publicUrl;
 
     // Insert patient_reports row
-    const { data: report, error: insertErr } = await supabaseAdmin
+    const { data: report, error: insertErr } = await (supabaseAdmin as any)
       .from('patient_reports')
       .insert({
         patient_id: patientId,
         hospital_id: hospital.id,
+        report_category: reportCategory,
         report_type: reportType,
         report_name: reportName,
         report_url: reportUrl,
@@ -203,7 +225,7 @@ export async function listPatientReportsForAdmin(
 
     const { data: reports, error } = await supabaseAdmin
       .from('patient_reports')
-      .select('id, report_name, report_type, report_url, uploaded_at')
+      .select('id, report_name, report_category, report_type, report_url, uploaded_at')
       .eq('patient_id', patientId)
       .eq('hospital_id', hospital.id)
       .order('uploaded_at', { ascending: false });

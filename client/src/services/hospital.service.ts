@@ -323,6 +323,7 @@ export interface HospitalPatient {
 export interface PatientReport {
   id: string;
   report_name: string;
+  report_category: string;
   report_type: string;
   report_url: string;
   uploaded_at: string;
@@ -332,12 +333,14 @@ export async function uploadPatientReport(
   patientId: string,
   payload: {
     report_name: string;
-    report_type: 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
+    report_category: 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
+    report_type: 'ecg' | 'xray' | 'mri' | 'ct' | 'blood_test' | 'urine_test' | 'other';
     file: File;
   }
 ): Promise<{ data: { report: any } }> {
   const form = new FormData();
   form.append('report_name', payload.report_name);
+  form.append('report_category', payload.report_category);
   form.append('report_type', payload.report_type);
   form.append('file', payload.file);
 

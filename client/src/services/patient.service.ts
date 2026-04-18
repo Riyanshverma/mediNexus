@@ -78,6 +78,7 @@ export interface PatientReport {
   id: string;
   patient_id: string;
   hospital_id: string;
+  report_category: string;
   report_type: string;
   report_name: string;
   report_url: string;
