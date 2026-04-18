@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Calendar, Plus, Trash2, RefreshCw, ChevronLeft, ChevronRight,
-  Loader2, XCircle, Settings, AlertCircle,
+  Loader2, XCircle, Settings, AlertCircle, Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -25,23 +24,15 @@ import {
   format, addDays, startOfWeek, eachDayOfInterval, parseISO,
 } from 'date-fns';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Parse a YYYY-MM-DD string as a local-timezone Date (avoids UTC-midnight off-by-one). */
 const parseLocalDate = (dateStr: string): Date => parseISO(dateStr);
-
 const todayStr = () => format(new Date(), 'yyyy-MM-dd');
 const isSunday = (dateStr: string) => parseLocalDate(dateStr).getDay() === 0;
-
-// ─── Initial form state ───────────────────────────────────────────────────────
 
 const emptyGenerateForm = () => ({
   startDate: todayStr(),
   endDate: todayStr(),
   numberOfSlots: 10,
 });
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export const AdminServiceSlots = () => {
   const [services, setServices] = useState<HospitalService[]>([]);
@@ -53,39 +44,32 @@ export const AdminServiceSlots = () => {
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
 
-  // Generate dialog
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [generateForm, setGenerateForm] = useState(emptyGenerateForm());
   const [generateErrors, setGenerateErrors] = useState<Partial<Record<'startDate' | 'endDate' | 'numberOfSlots', string>>>({});
   const [generating, setGenerating] = useState(false);
 
-  // Delete single slot
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [slotToDelete, setSlotToDelete] = useState<ServiceSlot | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Availability summary
   const [availability, setAvailability] = useState<
     Record<string, { total: number; available: number; booked: number; locked: number }>
   >({});
 
-  // Day-edit dialog
   const [dayEditDialogOpen, setDayEditDialogOpen] = useState(false);
   const [dayEditDate, setDayEditDate] = useState<string>('');
   const [dayEditSlots, setDayEditSlots] = useState<number>(10);
   const [dayEditError, setDayEditError] = useState<string>('');
   const [dayUpdating, setDayUpdating] = useState(false);
 
-  // Use a ref to deduplicate parallel loads triggered by service/week changes
+  // Selected day for weekly slot detail panel
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
   const loadIdRef = useRef(0);
 
-  // ─── Data loading ─────────────────────────────────────────────────────────
+  useEffect(() => { loadServices(); }, []);
 
-  useEffect(() => {
-    loadServices();
-  }, []);
-
-  // Single effect for all data-loading triggered by service/week changes
   useEffect(() => {
     if (selectedService) {
       const id = ++loadIdRef.current;
@@ -97,7 +81,6 @@ export const AdminServiceSlots = () => {
     }
   }, [selectedService, currentWeekStart]);
 
-  // Sync numberOfSlots default when service changes
   useEffect(() => {
     if (!selectedService) return;
     const selected = services.find((svc) => svc.id === selectedService);
@@ -120,14 +103,11 @@ export const AdminServiceSlots = () => {
         startDate: weekStartStr,
         endDate: weekEndStr,
       });
-      // Ignore stale responses if a newer load was triggered
       if (callId !== undefined && callId !== loadIdRef.current) return;
       const allSlots = (res as any).data?.services?.[0]?.slots ?? [];
-      setSlots(
-        allSlots.filter(
-          (s: ServiceSlot) => s.slot_date >= weekStartStr && s.slot_date <= weekEndStr
-        )
-      );
+      setSlots(allSlots.filter(
+        (s: ServiceSlot) => s.slot_date >= weekStartStr && s.slot_date <= weekEndStr
+      ));
     } catch {
       toast.error('Failed to load slots');
     } finally {
@@ -139,15 +119,11 @@ export const AdminServiceSlots = () => {
     if (!selectedService) return;
     try {
       const res = await hospitalService.getServiceAvailability(
-        selectedService,
-        weekStartStr,
-        weekEndStr
+        selectedService, weekStartStr, weekEndStr
       );
       if (callId !== undefined && callId !== loadIdRef.current) return;
       setAvailability((res as any).data?.availability ?? {});
-    } catch {
-      // Availability is a secondary view; don't noisily fail
-    }
+    } catch { /* non-critical */ }
   };
 
   const refreshAll = () => {
@@ -156,32 +132,16 @@ export const AdminServiceSlots = () => {
     loadAvailability(id);
   };
 
-  // ─── Generate slots ───────────────────────────────────────────────────────
-
   const validateGenerateForm = (): boolean => {
     const errors: typeof generateErrors = {};
     const today = todayStr();
-
-    if (!generateForm.startDate) {
-      errors.startDate = 'Start date is required';
-    } else if (generateForm.startDate < today) {
-      errors.startDate = 'Start date cannot be in the past';
-    } else if (isSunday(generateForm.startDate)) {
-      errors.startDate = 'Start date cannot be a Sunday';
-    }
-
-    if (!generateForm.endDate) {
-      errors.endDate = 'End date is required';
-    } else if (generateForm.endDate < generateForm.startDate) {
-      errors.endDate = 'End date must be on or after start date';
-    }
-
-    if (!generateForm.numberOfSlots || generateForm.numberOfSlots < 1) {
-      errors.numberOfSlots = 'At least 1 slot required';
-    } else if (generateForm.numberOfSlots > 200) {
-      errors.numberOfSlots = 'Maximum 200 slots per day';
-    }
-
+    if (!generateForm.startDate) errors.startDate = 'Start date is required';
+    else if (generateForm.startDate < today) errors.startDate = 'Start date cannot be in the past';
+    else if (isSunday(generateForm.startDate)) errors.startDate = 'Start date cannot be a Sunday';
+    if (!generateForm.endDate) errors.endDate = 'End date is required';
+    else if (generateForm.endDate < generateForm.startDate) errors.endDate = 'End date must be on or after start date';
+    if (!generateForm.numberOfSlots || generateForm.numberOfSlots < 1) errors.numberOfSlots = 'At least 1 slot required';
+    else if (generateForm.numberOfSlots > 200) errors.numberOfSlots = 'Maximum 200 slots per day';
     setGenerateErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -197,9 +157,7 @@ export const AdminServiceSlots = () => {
         numberOfSlots: generateForm.numberOfSlots,
       });
       const d = (res as any).data;
-      toast.success(
-        `Generated ${d?.generated ?? 0} slots across ${d?.workingDays ?? '?'} working day(s)`
-      );
+      toast.success(`Generated ${d?.generated ?? 0} slots across ${d?.workingDays ?? '?'} working day(s)`);
       setGenerateDialogOpen(false);
       refreshAll();
     } catch (err: any) {
@@ -210,8 +168,6 @@ export const AdminServiceSlots = () => {
     }
   };
 
-  // ─── Delete single slot ───────────────────────────────────────────────────
-
   const handleDeleteSlot = async () => {
     if (!slotToDelete) return;
     setDeleting(true);
@@ -220,8 +176,7 @@ export const AdminServiceSlots = () => {
       toast.success('Slot deleted');
       refreshAll();
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? err?.message ?? 'Failed to delete slot';
-      toast.error(msg);
+      toast.error(err?.response?.data?.error ?? err?.message ?? 'Failed to delete slot');
     } finally {
       setDeleting(false);
       setDeleteDialogOpen(false);
@@ -229,26 +184,19 @@ export const AdminServiceSlots = () => {
     }
   };
 
-  // ─── Bulk delete ──────────────────────────────────────────────────────────
-
   const handleBulkDelete = async () => {
     if (!selectedService) return;
     try {
       const res = await hospitalService.bulkDeleteServiceSlots({
-        serviceId: selectedService,
-        startDate: weekStartStr,
-        endDate: weekEndStr,
+        serviceId: selectedService, startDate: weekStartStr, endDate: weekEndStr,
       });
       const deleted = (res as any).data?.deleted ?? 0;
       toast.success(`Deleted ${deleted} available slot${deleted !== 1 ? 's' : ''}`);
       refreshAll();
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? err?.message ?? 'Failed to delete slots';
-      toast.error(msg);
+      toast.error(err?.response?.data?.error ?? err?.message ?? 'Failed to delete slots');
     }
   };
-
-  // ─── Day-edit dialog ──────────────────────────────────────────────────────
 
   const openDayEditDialog = (date: Date) => {
     const dateKey = format(date, 'yyyy-MM-dd');
@@ -262,49 +210,31 @@ export const AdminServiceSlots = () => {
 
   const handleDaySlotUpdate = async () => {
     if (!selectedService || !dayEditDate) return;
-
-    if (!dayEditSlots || dayEditSlots < 1) {
-      setDayEditError('At least 1 slot is required');
-      return;
-    }
-    if (dayEditSlots > 200) {
-      setDayEditError('Maximum 200 slots per day');
-      return;
-    }
-    if (isSunday(dayEditDate)) {
-      setDayEditError('Cannot manage slots on a Sunday');
-      return;
-    }
-
+    if (!dayEditSlots || dayEditSlots < 1) { setDayEditError('At least 1 slot is required'); return; }
+    if (dayEditSlots > 200) { setDayEditError('Maximum 200 slots per day'); return; }
+    if (isSunday(dayEditDate)) { setDayEditError('Cannot manage slots on a Sunday'); return; }
     setDayEditError('');
     setDayUpdating(true);
     try {
       await hospitalService.updateServiceDaySlots({
-        serviceId: selectedService,
-        slotDate: dayEditDate,
-        numberOfSlots: dayEditSlots,
+        serviceId: selectedService, slotDate: dayEditDate, numberOfSlots: dayEditSlots,
       });
       toast.success(`Updated ${dayEditDate} to ${dayEditSlots} slots`);
       setDayEditDialogOpen(false);
       refreshAll();
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? err?.message ?? 'Failed to update day slots';
-      toast.error(msg);
+      toast.error(err?.response?.data?.error ?? err?.message ?? 'Failed to update day slots');
     } finally {
       setDayUpdating(false);
     }
   };
-
-  // ─── Load services ────────────────────────────────────────────────────────
 
   const loadServices = async () => {
     try {
       const res = await hospitalService.listServices();
       const svcs = (res as any).data?.services ?? [];
       setServices(svcs);
-      if (svcs.length > 0 && !selectedService) {
-        setSelectedService(svcs[0].id);
-      }
+      if (svcs.length > 0 && !selectedService) setSelectedService(svcs[0].id);
     } catch {
       toast.error('Failed to load services');
     } finally {
@@ -312,15 +242,13 @@ export const AdminServiceSlots = () => {
     }
   };
 
-  // ─── Derived ──────────────────────────────────────────────────────────────
-
   const weekDays = eachDayOfInterval({ start: currentWeekStart, end: weekEnd });
+  const getSlotsForDay = (dayKey: string) => slots.filter((s) => s.slot_date === dayKey);
+  const selectedSvc = services.find(s => s.id === selectedService);
 
-  /** Get slots for a day by string key (avoids timezone issues entirely). */
-  const getSlotsForDay = (dayKey: string) =>
-    slots.filter((s) => s.slot_date === dayKey);
-
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // Default selected day to today (or first weekday)
+  const todayKey = format(new Date(), 'yyyy-MM-dd');
+  const activeDay = selectedDay ?? (weekDays.some(d => format(d, 'yyyy-MM-dd') === todayKey) ? todayKey : format(weekDays[0], 'yyyy-MM-dd'));
 
   if (loading) {
     return (
@@ -331,201 +259,210 @@ export const AdminServiceSlots = () => {
   }
 
   return (
-    <div className="p-8 animate-in fade-in duration-500 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 animate-in fade-in duration-500 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-3xl font-light tracking-tight">Service Slots</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Service Slots</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Manage numbered slots for hospital services (Mon – Sat, first-come-first-served)
+            Configure availability and capacity for clinical departments.
           </p>
+          {/* Service selector + status pill */}
+          {services.length > 0 && (
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <Select value={selectedService || ''} onValueChange={v => { setSelectedService(v); setSelectedDay(null); }}>
+                <SelectTrigger className="h-8 text-sm rounded-full px-4 w-auto min-w-[180px] border border-primary/30 bg-primary/5">
+                  <SelectValue placeholder="Select a service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {services.map((svc) => (
+                    <SelectItem key={svc.id} value={svc.id}>{svc.service_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedSvc?.is_available && (
+                <span className="text-[10px] font-bold uppercase tracking-widest border border-primary/30 text-primary rounded-full px-3 py-1">
+                  Active Service
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Select value={selectedService || ''} onValueChange={setSelectedService}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Select a service" />
-            </SelectTrigger>
-            <SelectContent>
-              {services.map((svc) => (
-                <SelectItem key={svc.id} value={svc.id}>
-                  {svc.service_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+        <div className="flex items-center gap-2 shrink-0">
           <Button
-            onClick={() => {
-              setGenerateErrors({});
-              setGenerateForm(emptyGenerateForm());
-              setGenerateDialogOpen(true);
-            }}
-            disabled={!selectedService}
+            variant="outline"
+            size="sm"
+            onClick={handleBulkDelete}
+            disabled={!selectedService || slotsLoading}
+            className="rounded-full px-4 text-destructive hover:text-destructive hover:border-destructive/30"
           >
-            <Plus className="h-4 w-4 mr-2" /> Generate Slots
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" /> Clear Available
+          </Button>
+          <Button
+            onClick={() => { setGenerateErrors({}); setGenerateForm(emptyGenerateForm()); setGenerateDialogOpen(true); }}
+            disabled={!selectedService}
+            className="rounded-full px-5"
+          >
+            <Sparkles className="h-4 w-4 mr-2" /> Generate Slots
           </Button>
         </div>
       </div>
 
+      {services.length === 0 && (
+        <div className="bg-card border rounded-2xl p-16 text-center text-muted-foreground">
+          <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="font-medium">No services configured yet.</p>
+          <p className="text-sm mt-1">Add services first from the Services tab.</p>
+        </div>
+      )}
+
       {selectedService && (
         <>
-          {/* Week navigation */}
-          <div className="flex items-center justify-between">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentWeekStart(addDays(currentWeekStart, -7))}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="text-sm font-medium">
-              {format(currentWeekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentWeekStart(addDays(currentWeekStart, 7))}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Availability summary cards */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-3">
-            {weekDays.map((day) => {
-              const dayKey = format(day, 'yyyy-MM-dd');
-              const stats = availability[dayKey] || { total: 0, available: 0, booked: 0, locked: 0 };
-              const isSun = day.getDay() === 0;
-              return (
-                <Card
-                  key={dayKey}
-                  className={`text-center ${isSun ? 'opacity-40 pointer-events-none' : ''}`}
-                >
-                  <CardHeader className="pb-1 pt-3 px-2">
-                    <CardTitle className="text-xs font-semibold">{format(day, 'EEE')}</CardTitle>
-                    <p className="text-xs text-muted-foreground">{format(day, 'MMM d')}</p>
-                  </CardHeader>
-                  <CardContent className="px-2 pb-3">
-                    {isSun ? (
-                      <p className="text-xs text-muted-foreground mt-1">Closed</p>
-                    ) : (
-                      <>
-                        <div className="text-2xl font-light">{stats.total}</div>
-                        <p className="text-xs text-muted-foreground">slots</p>
-                        <div className="flex flex-col items-center gap-0.5 mt-1 text-xs">
-                          <span className="text-green-600">{stats.available} open</span>
-                          <span className="text-blue-600">{stats.booked} booked</span>
-                          {stats.locked > 0 && (
-                            <span className="text-yellow-600">{stats.locked} locked</span>
-                          )}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2 h-7 text-xs w-full"
-                          onClick={() => openDayEditDialog(day)}
-                        >
-                          <Settings className="h-3 w-3 mr-1" /> Edit
-                        </Button>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* Weekly slots detail */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-medium">Weekly Slots Detail</h2>
-              <Button variant="outline" size="sm" onClick={handleBulkDelete} disabled={slotsLoading}>
-                <Trash2 className="h-4 w-4 mr-2" /> Clear Available
+          {/* Week navigation + Day summary cards */}
+          <div className="bg-card border rounded-2xl overflow-hidden">
+            {/* Week nav row */}
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"
+                onClick={() => { setCurrentWeekStart(addDays(currentWeekStart, -7)); setSelectedDay(null); }}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <p className="text-sm font-semibold">
+                {format(currentWeekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
+              </p>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"
+                onClick={() => { setCurrentWeekStart(addDays(currentWeekStart, 7)); setSelectedDay(null); }}>
+                <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
 
-            {slotsLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            {/* Day cards row */}
+            <div className="grid grid-cols-7">
+              {weekDays.map((day) => {
+                const dayKey = format(day, 'yyyy-MM-dd');
+                const stats = availability[dayKey] || { total: 0, available: 0, booked: 0, locked: 0 };
+                const isSun = day.getDay() === 0;
+                const isActive = activeDay === dayKey;
+                const isToday = dayKey === todayKey;
+                return (
+                  <div
+                    key={dayKey}
+                    onClick={() => !isSun && setSelectedDay(dayKey)}
+                    className={`relative p-4 border-r last:border-r-0 transition-colors ${
+                      isSun ? 'opacity-40' : 'cursor-pointer hover:bg-muted/30'
+                    } ${isActive && !isSun ? 'bg-primary/5 border-b-2 border-b-primary' : ''}`}
+                  >
+                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
+                      {format(day, 'EEE')}
+                    </p>
+                    <p className={`text-2xl font-bold ${isToday ? 'text-primary' : ''}`}>
+                      {format(day, 'd')}
+                    </p>
+                    {isSun ? (
+                      <p className="text-[10px] text-muted-foreground mt-1">Closed</p>
+                    ) : stats.total === 0 ? (
+                      <p className="text-[10px] text-muted-foreground mt-1">No slots</p>
+                    ) : (
+                      <>
+                        <p className="text-[10px] text-muted-foreground mt-1 font-medium">{stats.total} TOTAL SLOTS</p>
+                        <div className="flex gap-2 mt-1.5 text-[10px] flex-wrap">
+                          <span className="text-emerald-500 font-bold">{stats.available} <span className="font-normal text-muted-foreground">Open</span></span>
+                          <span className="text-violet-400 font-bold">{stats.booked} <span className="font-normal text-muted-foreground">Booked</span></span>
+                        </div>
+                        <button
+                          onClick={e => { e.stopPropagation(); openDayEditDialog(day); }}
+                          className="mt-2 text-[10px] text-primary hover:underline flex items-center gap-1"
+                        >
+                          <Settings className="h-2.5 w-2.5" /> Edit
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Weekly Slots Detail */}
+          <div className="bg-card border rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold">Weekly Slots Detail</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Review and manage specific intervals for {format(parseLocalDate(activeDay), 'EEEE, MMM d')}
+                </p>
               </div>
-            ) : (
-              <div className="grid grid-cols-7 gap-2">
-                {weekDays.map((day) => {
-                  const dayKey = format(day, 'yyyy-MM-dd');
-                  const daySlots = getSlotsForDay(dayKey);
-                  const isSun = day.getDay() === 0;
-                  return (
-                    <div key={dayKey} className="space-y-1">
+              {slotsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+
+            {(() => {
+              const daySlots = getSlotsForDay(activeDay);
+              if (daySlots.length === 0) {
+                return (
+                  <div className="p-12 text-center text-muted-foreground">
+                    <Calendar className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No slots for this day. Click "Generate Slots" to create them.</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="grid grid-cols-2 gap-3 p-4">
+                  {daySlots.map((slot) => {
+                    const isAvailable = slot.status === 'available';
+                    const isBooked = slot.status === 'booked';
+                    return (
                       <div
-                        className={`text-xs font-medium text-center py-1 rounded ${
-                          isSun ? 'bg-muted/40 text-muted-foreground/50' : 'bg-muted'
+                        key={slot.id}
+                        onClick={() => {
+                          if (isAvailable) { setSlotToDelete(slot); setDeleteDialogOpen(true); }
+                        }}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3.5 transition-colors ${
+                          isAvailable
+                            ? 'border-primary/20 bg-primary/5 cursor-pointer hover:border-primary/40'
+                            : isBooked
+                            ? 'border-border bg-card cursor-default'
+                            : 'border-border bg-muted/20 cursor-default'
                         }`}
                       >
-                        {format(day, 'EEE d')}
-                      </div>
-                      {isSun ? (
-                        <p className="text-xs text-muted-foreground text-center py-2">–</p>
-                      ) : (
-                        <div className="space-y-1 max-h-64 overflow-y-auto">
-                          {daySlots.length === 0 ? (
-                            <p className="text-xs text-muted-foreground text-center py-4">No slots</p>
-                          ) : (
-                            daySlots.map((slot) => (
-                              <div
-                                key={slot.id}
-                                title={
-                                  slot.status === 'available'
-                                    ? 'Click to delete'
-                                    : `Status: ${slot.status}`
-                                }
-                                className={[
-                                  'flex items-center justify-between px-2 py-1.5 rounded text-xs transition-opacity',
-                                  slot.status === 'available'
-                                    ? 'bg-green-500/10 text-green-700 cursor-pointer hover:opacity-70'
-                                    : '',
-                                  slot.status === 'booked'
-                                    ? 'bg-blue-500/10 text-blue-700 cursor-default'
-                                    : '',
-                                  slot.status === 'locked'
-                                    ? 'bg-yellow-500/10 text-yellow-700 cursor-default'
-                                    : '',
-                      
-                                ]
-                                  .filter(Boolean)
-                                  .join(' ')}
-                                onClick={() => {
-                                  if (slot.status === 'available') {
-                                    setSlotToDelete(slot);
-                                    setDeleteDialogOpen(true);
-                                  }
-                                }}
-                              >
-                                <span>#{slot.slot_number}</span>
-                                {slot.status === 'available' && (
-                                  <XCircle className="h-3 w-3 opacity-50 flex-shrink-0" />
-                                )}
-                              </div>
-                            ))
-                          )}
+                        <div className="flex items-center gap-3">
+                          {/* Slot number bubble */}
+                          <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                            isAvailable ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                          }`}>
+                            #{slot.slot_number}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold">
+                              Slot #{slot.slot_number}
+                            </p>
+                            <p className={`text-xs ${isAvailable ? 'text-primary' : 'text-muted-foreground'}`}>
+                              {isAvailable ? 'Accepting Patients' : isBooked ? `Slot ${slot.slot_date}` : slot.status}
+                            </p>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-wide rounded-full px-2.5 py-1 ${
+                            isAvailable
+                              ? 'bg-primary/15 text-primary'
+                              : isBooked
+                              ? 'bg-muted text-muted-foreground'
+                              : 'bg-yellow-500/10 text-yellow-500'
+                          }`}>
+                            {isAvailable ? 'Available' : isBooked ? 'Booked' : slot.status}
+                          </span>
+                          {isAvailable && <XCircle className="h-3.5 w-3.5 text-muted-foreground/50" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </>
       )}
 
-      {services.length === 0 && !loading && (
-        <Card className="p-12 text-center text-muted-foreground">
-          <Calendar className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p>No services configured yet.</p>
-          <p className="text-sm mt-1">Add services first from the Services tab.</p>
-        </Card>
-      )}
-
-      {/* ── Generate Slots Dialog ─────────────────────────────────────────── */}
+      {/* ── Generate Dialog ── */}
       <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -536,16 +473,12 @@ export const AdminServiceSlots = () => {
               <div className="space-y-2">
                 <Label htmlFor="gen-start">Start Date</Label>
                 <Input
-                  id="gen-start"
-                  type="date"
-                  min={todayStr()}
+                  id="gen-start" type="date" min={todayStr()}
                   value={generateForm.startDate}
                   onChange={(e) => {
                     setGenerateErrors((prev) => ({ ...prev, startDate: undefined }));
                     setGenerateForm((f) => ({
-                      ...f,
-                      startDate: e.target.value,
-                      // auto-push endDate forward if it's behind
+                      ...f, startDate: e.target.value,
                       endDate: f.endDate < e.target.value ? e.target.value : f.endDate,
                     }));
                   }}
@@ -560,9 +493,7 @@ export const AdminServiceSlots = () => {
               <div className="space-y-2">
                 <Label htmlFor="gen-end">End Date</Label>
                 <Input
-                  id="gen-end"
-                  type="date"
-                  min={generateForm.startDate || todayStr()}
+                  id="gen-end" type="date" min={generateForm.startDate || todayStr()}
                   value={generateForm.endDate}
                   onChange={(e) => {
                     setGenerateErrors((prev) => ({ ...prev, endDate: undefined }));
@@ -577,11 +508,9 @@ export const AdminServiceSlots = () => {
                 )}
               </div>
             </div>
-
             <p className="text-xs text-muted-foreground">
               Sundays are automatically skipped. Existing slots on a date are kept (duplicates ignored).
             </p>
-
             <div className="space-y-2">
               <Label>Slots per Working Day</Label>
               <Select
@@ -596,9 +525,7 @@ export const AdminServiceSlots = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {[5, 10, 15, 20, 25, 30, 40, 50, 75, 100].map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n} slots
-                    </SelectItem>
+                    <SelectItem key={n} value={String(n)}>{n} slots</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -613,45 +540,34 @@ export const AdminServiceSlots = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGenerateDialogOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setGenerateDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleGenerateSlots} disabled={generating}>
-              {generating ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
+              {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
               Generate
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete Slot AlertDialog ───────────────────────────────────────── */}
+      {/* ── Delete Slot Dialog ── */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Slot?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete Slot #{slotToDelete?.slot_number} on{' '}
-              {slotToDelete?.slot_date}. Booked or locked slots cannot be deleted.
+              This will permanently delete Slot #{slotToDelete?.slot_number} on {slotToDelete?.slot_date}. Booked or locked slots cannot be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteSlot}
-              disabled={deleting}
-              className="bg-destructive text-destructive-foreground"
-            >
+            <AlertDialogAction onClick={handleDeleteSlot} disabled={deleting} className="bg-destructive text-destructive-foreground">
               {deleting ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Edit Day Slots Dialog ─────────────────────────────────────────── */}
+      {/* ── Edit Day Slots Dialog ── */}
       <Dialog open={dayEditDialogOpen} onOpenChange={setDayEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -665,14 +581,9 @@ export const AdminServiceSlots = () => {
             <div className="space-y-1">
               <Label>Total Slots for This Day</Label>
               <Input
-                type="number"
-                min={1}
-                max={200}
+                type="number" min={1} max={200}
                 value={dayEditSlots}
-                onChange={(e) => {
-                  setDayEditError('');
-                  setDayEditSlots(Number(e.target.value) || 1);
-                }}
+                onChange={(e) => { setDayEditError(''); setDayEditSlots(Number(e.target.value) || 1); }}
                 className={dayEditError ? 'border-destructive' : ''}
               />
               {dayEditError && (
@@ -684,28 +595,20 @@ export const AdminServiceSlots = () => {
                 Booked and locked slots are preserved. Only available overflow slots are removed.
               </p>
             </div>
-
-            {/* Show existing breakdown */}
             {availability[dayEditDate] && (
-              <div className="rounded bg-muted/50 p-3 text-xs space-y-1">
+              <div className="rounded-xl bg-muted/50 p-3 text-xs space-y-1">
                 <p className="font-medium">Current breakdown for {dayEditDate}</p>
                 <div className="grid grid-cols-3 gap-2 text-center mt-1">
                   <div>
-                    <span className="text-green-600 font-semibold block">
-                      {availability[dayEditDate].available}
-                    </span>
+                    <span className="text-emerald-600 font-semibold block">{availability[dayEditDate].available}</span>
                     <span className="text-muted-foreground">Available</span>
                   </div>
                   <div>
-                    <span className="text-blue-600 font-semibold block">
-                      {availability[dayEditDate].booked}
-                    </span>
+                    <span className="text-violet-500 font-semibold block">{availability[dayEditDate].booked}</span>
                     <span className="text-muted-foreground">Booked</span>
                   </div>
                   <div>
-                    <span className="text-yellow-600 font-semibold block">
-                      {availability[dayEditDate].locked}
-                    </span>
+                    <span className="text-yellow-600 font-semibold block">{availability[dayEditDate].locked}</span>
                     <span className="text-muted-foreground">Locked</span>
                   </div>
                 </div>
@@ -713,9 +616,7 @@ export const AdminServiceSlots = () => {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDayEditDialogOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setDayEditDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleDaySlotUpdate} disabled={dayUpdating}>
               {dayUpdating && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Save

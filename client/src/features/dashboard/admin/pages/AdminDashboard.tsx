@@ -48,9 +48,9 @@ const AdminDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-screen bg-muted/20 overflow-x-hidden">
       <AdminDashboardHeader activeTab={activeTab} setActiveTab={setActiveTab} />
-      <main className="w-full max-w-7xl mx-auto">
+      <main className="w-full px-6 py-8">
         {renderContent()}
       </main>
     </div>
