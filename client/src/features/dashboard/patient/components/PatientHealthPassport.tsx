@@ -150,9 +150,10 @@ export const PatientHealthPassport = () => {
     try {
       const res = await patientService.speakReport(reportId, lang);
       const audioBase64 = res.data?.audio_base64;
+      const audioMime = res.data?.audio_mime ?? 'audio/mpeg';
       if (!audioBase64) throw new Error('No audio received');
 
-      const audio = new Audio(`data:audio/wav;base64,${audioBase64}`);
+      const audio = new Audio(`data:${audioMime};base64,${audioBase64}`);
       reportAudioRefs.current[audioKey] = audio;
 
       audio.onended = () => setSpeakState(reportId, 'idle');

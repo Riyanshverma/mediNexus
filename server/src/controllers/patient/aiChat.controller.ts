@@ -1,13 +1,13 @@
-import type { Request, Response, NextFunction } from 'express';
-import { supabaseAdmin } from '../../config/supabase.js';
-import { sendSuccess } from '../../utils/response.js';
-import { AppError, BadRequestError } from '../../utils/errors.js';
-import { requirePatient } from '../../utils/lookup.js';
+import type { Request, Response, NextFunction } from "express";
+import { supabaseAdmin } from "../../config/supabase.js";
+import { sendSuccess } from "../../utils/response.js";
+import { AppError, BadRequestError } from "../../utils/errors.js";
+import { requirePatient } from "../../utils/lookup.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
 }
 
@@ -55,50 +55,57 @@ function buildSystemPrompt(context: {
   // ── Prescriptions ────────────────────────────────────────────────────────
   const rxText =
     context.prescriptions.length === 0
-      ? 'No prescriptions on record.'
+      ? "No prescriptions on record."
       : context.prescriptions
           .map((rx, i) => {
             const meds =
               rx.items.length === 0
-                ? '  (no medicines listed)'
+                ? "  (no medicines listed)"
                 : rx.items
                     .map(
                       (it) =>
                         `  • ${it.medicineName} — ${it.dosage}, ${it.frequency}, for ${it.duration}` +
-                        (it.comment ? ` (note: ${it.comment})` : '')
+                        (it.comment ? ` (note: ${it.comment})` : ""),
                     )
-                    .join('\n');
+                    .join("\n");
             return [
               `Prescription ${i + 1} — issued ${rx.issuedAt}`,
-              rx.illnessDescription ? `  Illness/Diagnosis: ${rx.illnessDescription}` : '',
-              rx.doctorSpecialisation ? `  Doctor speciality: ${rx.doctorSpecialisation}` : '',
+              rx.illnessDescription
+                ? `  Illness/Diagnosis: ${rx.illnessDescription}`
+                : "",
+              rx.doctorSpecialisation
+                ? `  Doctor speciality: ${rx.doctorSpecialisation}`
+                : "",
               meds,
             ]
               .filter(Boolean)
-              .join('\n');
+              .join("\n");
           })
-          .join('\n\n');
+          .join("\n\n");
 
   // ── Reports ──────────────────────────────────────────────────────────────
   const reportsText =
     context.reports.length === 0
-      ? 'No reports on file.'
+      ? "No reports on file."
       : context.reports
-          .map((r) => `• ${r.reportName} (${r.reportType}) — uploaded ${r.uploadedAt}`)
-          .join('\n');
+          .map(
+            (r) =>
+              `• ${r.reportName} (${r.reportType}) — uploaded ${r.uploadedAt}`,
+          )
+          .join("\n");
 
   // ── Referrals ────────────────────────────────────────────────────────────
   const referralsText =
     context.referrals.length === 0
-      ? 'No referrals on record.'
+      ? "No referrals on record."
       : context.referrals
           .map(
             (r) =>
-              `• ${r.fromSpecialisation ?? 'Unknown'} → ${r.toSpecialisation ?? 'Unknown'}` +
-              (r.reason ? `: ${r.reason}` : '') +
-              ` [${r.status}]`
+              `• ${r.fromSpecialisation ?? "Unknown"} → ${r.toSpecialisation ?? "Unknown"}` +
+              (r.reason ? `: ${r.reason}` : "") +
+              ` [${r.status}]`,
           )
-          .join('\n');
+          .join("\n");
 
   return `You are a personal health assistant integrated into the mediNexus patient portal.
 Your role is to help the patient understand their own medical history, past prescriptions, reports, and referrals in plain, compassionate language.
@@ -117,9 +124,9 @@ IMPORTANT RULES:
 PATIENT HEALTH CONTEXT (anonymized — no names or IDs shared)
 ══════════════════════════════════════════════════════════════
 
-Age: ${context.ageYears !== null ? `${context.ageYears} years` : 'Not available'}
-Blood Group: ${context.bloodGroup ?? 'Not recorded'}
-Known Allergies: ${context.knownAllergies?.trim() || 'None reported'}
+Age: ${context.ageYears !== null ? `${context.ageYears} years` : "Not available"}
+Blood Group: ${context.bloodGroup ?? "Not recorded"}
+Known Allergies: ${context.knownAllergies?.trim() || "None reported"}
 
 ── PRESCRIPTIONS (most recent first, up to last 10) ──────────
 ${rxText}
@@ -145,59 +152,59 @@ ${referralsText}
 export async function patientAIChat(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   try {
     const userId = req.user?.id;
-    if (!userId) throw new AppError('Authenticated user not found', 401);
+    if (!userId) throw new AppError("Authenticated user not found", 401);
 
     const patient = await requirePatient(userId);
 
     const { message, history = [] } = req.body as AIChatRequestBody;
 
     if (!message?.trim()) {
-      throw new BadRequestError('message is required');
+      throw new BadRequestError("message is required");
     }
 
     if (message.trim().length > 1000) {
-      throw new BadRequestError('message must be 1000 characters or less');
+      throw new BadRequestError("message must be 1000 characters or less");
     }
 
     const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) throw new AppError('AI service is not configured', 503);
+    if (!apiKey) throw new AppError("AI service is not configured", 503);
 
     // ── 1. Fetch all patient health data in parallel ─────────────────────────
     const [prescriptionsRes, reportsRes, referralsRes] = await Promise.all([
       (supabaseAdmin as any)
-        .from('prescriptions')
+        .from("prescriptions")
         .select(
           `illness_description, issued_at,
            doctors ( specialisation ),
            prescription_items (
              dosage, frequency, duration, doctor_comment,
              medicines ( medicine_name )
-           )`
+           )`,
         )
-        .eq('patient_id', patient.id)
-        .order('issued_at', { ascending: false })
+        .eq("patient_id", patient.id)
+        .order("issued_at", { ascending: false })
         .limit(10),
 
       (supabaseAdmin as any)
-        .from('patient_reports')
-        .select('report_type, report_name, uploaded_at')
-        .eq('patient_id', patient.id)
-        .order('uploaded_at', { ascending: false })
+        .from("patient_reports")
+        .select("report_type, report_name, uploaded_at")
+        .eq("patient_id", patient.id)
+        .order("uploaded_at", { ascending: false })
         .limit(20),
 
       (supabaseAdmin as any)
-        .from('referrals')
+        .from("referrals")
         .select(
           `reason, status,
            referring_doctor:referring_doctor_id ( specialisation ),
-           referred_to_doctor:referred_to_doctor_id ( specialisation )`
+           referred_to_doctor:referred_to_doctor_id ( specialisation )`,
         )
-        .eq('patient_id', patient.id)
-        .order('created_at', { ascending: false })
+        .eq("patient_id", patient.id)
+        .order("created_at", { ascending: false })
         .limit(10),
     ]);
 
@@ -208,22 +215,27 @@ export async function patientAIChat(
       const today = new Date();
       ageYears = today.getFullYear() - dob.getFullYear();
       const monthDiff = today.getMonth() - dob.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+      if (
+        monthDiff < 0 ||
+        (monthDiff === 0 && today.getDate() < dob.getDate())
+      ) {
         ageYears--;
       }
     }
 
     // ── 3. Shape data into clean context objects ─────────────────────────────
-    const prescriptions: PrescriptionContext[] = (prescriptionsRes.data ?? []).map((rx: any) => ({
-      issuedAt: new Date(rx.issued_at).toLocaleDateString('en-IN', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
+    const prescriptions: PrescriptionContext[] = (
+      prescriptionsRes.data ?? []
+    ).map((rx: any) => ({
+      issuedAt: new Date(rx.issued_at).toLocaleDateString("en-IN", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       }),
       illnessDescription: rx.illness_description ?? null,
       doctorSpecialisation: rx.doctors?.specialisation ?? null,
       items: (rx.prescription_items ?? []).map((it: any) => ({
-        medicineName: it.medicines?.medicine_name ?? 'Unknown',
+        medicineName: it.medicines?.medicine_name ?? "Unknown",
         dosage: it.dosage,
         frequency: it.frequency,
         duration: it.duration,
@@ -234,19 +246,21 @@ export async function patientAIChat(
     const reports: ReportContext[] = (reportsRes.data ?? []).map((r: any) => ({
       reportType: r.report_type,
       reportName: r.report_name,
-      uploadedAt: new Date(r.uploaded_at).toLocaleDateString('en-IN', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
+      uploadedAt: new Date(r.uploaded_at).toLocaleDateString("en-IN", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       }),
     }));
 
-    const referrals: ReferralContext[] = (referralsRes.data ?? []).map((r: any) => ({
-      fromSpecialisation: r.referring_doctor?.specialisation ?? null,
-      toSpecialisation: r.referred_to_doctor?.specialisation ?? null,
-      reason: r.reason ?? null,
-      status: r.status,
-    }));
+    const referrals: ReferralContext[] = (referralsRes.data ?? []).map(
+      (r: any) => ({
+        fromSpecialisation: r.referring_doctor?.specialisation ?? null,
+        toSpecialisation: r.referred_to_doctor?.specialisation ?? null,
+        reason: r.reason ?? null,
+        status: r.status,
+      }),
+    );
 
     // ── 4. Build system prompt with anonymized health context ────────────────
     const systemPrompt = buildSystemPrompt({
@@ -259,47 +273,54 @@ export async function patientAIChat(
     });
 
     // ── 5. Build the message thread (sanitized history + new message) ────────
-    const safeHistory: { role: 'user' | 'assistant'; content: string }[] = history
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .slice(-20) // at most last 10 turns (20 messages)
-      .map((m) => ({ role: m.role, content: String(m.content).slice(0, 2000) }));
+    const safeHistory: { role: "user" | "assistant"; content: string }[] =
+      history
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-20) // at most last 10 turns (20 messages)
+        .map((m) => ({
+          role: m.role,
+          content: String(m.content).slice(0, 2000),
+        }));
 
     const messages = [
-      { role: 'system' as const, content: systemPrompt },
+      { role: "system" as const, content: systemPrompt },
       ...safeHistory,
-      { role: 'user' as const, content: message.trim() },
+      { role: "user" as const, content: message.trim() },
     ];
 
     // ── 6. Call OpenRouter ───────────────────────────────────────────────────
-    const openRouterRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://medinexus.app',
-        'X-Title': 'mediNexus Patient Health Assistant',
+    const openRouterRes = await fetch(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://medinexus.app",
+          "X-Title": "mediNexus Patient Health Assistant",
+        },
+        body: JSON.stringify({
+          model: "arcee-ai/trinity-large-preview:free",
+          messages,
+          reasoning: { enabled: true },
+          temperature: 0.3,
+          max_tokens: 800,
+        }),
       },
-      body: JSON.stringify({
-        model: 'arcee-ai/trinity-large-preview:free',
-        messages,
-        reasoning: { enabled: true },
-        temperature: 0.3,
-        max_tokens: 800,
-      }),
-    });
+    );
 
     if (!openRouterRes.ok) {
       const errText = await openRouterRes.text();
-      console.error('[patientAIChat] OpenRouter error:', errText);
-      throw new AppError('AI service returned an error', 502);
+      console.error("[patientAIChat] OpenRouter error:", errText);
+      throw new AppError("AI service returned an error", 502);
     }
 
-    const openRouterData = await openRouterRes.json() as any;
+    const openRouterData = (await openRouterRes.json()) as any;
     const reply: string =
       openRouterData?.choices?.[0]?.message?.content?.trim() ??
-      'I was unable to generate a response. Please try again.';
+      "I was unable to generate a response. Please try again.";
 
-    sendSuccess(res, { reply }, 'AI response generated');
+    sendSuccess(res, { reply }, "AI response generated");
   } catch (err) {
     next(err);
   }

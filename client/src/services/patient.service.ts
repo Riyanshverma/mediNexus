@@ -318,7 +318,9 @@ export const patientService = {
 
   // Report Audio Analysis
   speakReport: (reportId: string, lang: 'en' | 'hi' = 'en') =>
-    api.post<{ data: { audio_base64: string; analysis_text: string } }>(
+    api.post<{
+      data: { audio_base64: string; audio_mime?: string; analysis_text: string };
+    }>(
       `/api/patients/me/reports/${reportId}/speak`,
       { lang }
     ),
