@@ -16,9 +16,10 @@ interface GenerateSlotsBody {
 }
 
 /**
- * GET /api/doctors/me/slots?upcoming=true
+ * GET /api/doctors/me/slots?upcoming=true&date=YYYY-MM-DD
  * Default: upcoming=true (only future available slots).
  * Pass upcoming=false to get all slots.
+ * Pass date=YYYY-MM-DD to scope results to a single UTC day.
  */
 export async function listDoctorSlots(
   req: Request,
@@ -31,6 +32,7 @@ export async function listDoctorSlots(
 
     const doctor = await requireDoctor(userId);
     const upcoming = (req.query['upcoming'] as string) !== 'false';
+    const dateParam = req.query['date'] as string | undefined;
 
     // ── Reconciliation: fix orphaned 'booked' slots ───────────────────────
     // A slot can get stuck as 'booked' if its appointment was cancelled or
@@ -78,7 +80,11 @@ export async function listDoctorSlots(
       .eq('doctor_id', doctor.id)
       .order('slot_start');
 
-    if (upcoming) {
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      query = query
+        .gte('slot_start', `${dateParam}T00:00:00.000Z`)
+        .lt('slot_start', `${dateParam}T23:59:59.999Z`);
+    } else if (upcoming) {
       query = query.gt('slot_start', new Date().toISOString());
     }
 
