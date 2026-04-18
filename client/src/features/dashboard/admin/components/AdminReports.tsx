@@ -8,6 +8,9 @@ import {
   X,
   User,
   ExternalLink,
+  ShieldCheck,
+  Lock,
+  UserSearch,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,8 +31,6 @@ import {
 } from '@/services/hospital.service';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type ReportCategory = 'lab' | 'radiology' | 'pathology' | 'discharge_summary' | 'other';
 type ReportType = 'ecg' | 'xray' | 'mri' | 'ct' | 'blood_test' | 'urine_test' | 'other';
@@ -55,21 +56,16 @@ const REPORT_TYPE_LABELS: Record<ReportType, string> = {
 const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 const MAX_FILE_MB = 20;
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export const AdminReports = () => {
-  // ── Patient search ──
   const [patientQuery, setPatientQuery] = useState('');
   const [patientResults, setPatientResults] = useState<HospitalPatient[]>([]);
   const [patientSearching, setPatientSearching] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<HospitalPatient | null>(null);
   const patientDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Existing reports for selected patient ──
   const [existingReports, setExistingReports] = useState<PatientReport[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
 
-  // ── Upload form ──
   const [reportName, setReportName] = useState('');
   const [reportCategory, setReportCategory] = useState<ReportCategory | ''>('');
   const [reportType, setReportType] = useState<ReportType | ''>('');
@@ -79,7 +75,6 @@ export const AdminReports = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Debounced patient search ──
   useEffect(() => {
     if (patientQuery.length < 2) {
       setPatientResults([]);
@@ -100,7 +95,6 @@ export const AdminReports = () => {
     return () => { if (patientDebounceRef.current) clearTimeout(patientDebounceRef.current); };
   }, [patientQuery]);
 
-  // ── Load existing reports when a patient is selected ──
   useEffect(() => {
     if (!selectedPatient) {
       setExistingReports([]);
@@ -175,7 +169,6 @@ export const AdminReports = () => {
       toast.success(`Report uploaded for ${selectedPatient.full_name}.`);
       setSuccess(true);
       resetForm();
-      // Refresh the reports list
       const res = await listPatientReportsForAdmin(selectedPatient.id);
       setExistingReports((res as any).data?.reports ?? []);
     } catch (err: any) {
@@ -186,246 +179,264 @@ export const AdminReports = () => {
   };
 
   return (
-    <div className="p-8 animate-in fade-in duration-500 max-w-3xl mx-auto space-y-6">
+    <div className="p-6 animate-in fade-in duration-500 space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-light tracking-tight">Patient Reports</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Patient Reports</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Upload lab results, scans, or any medical report. The patient will see it in their Health Passport.
+          Upload lab results, scans, or any medical report. The patient will see it in their{' '}
+          <span className="text-primary font-medium">Health Passport</span>.
         </p>
       </div>
 
-      {/* ── Step 1: Select patient ── */}
-      <div className="bg-card rounded-xl border p-6 space-y-4">
-        <h2 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-          1. Select Patient
-        </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* ═══════════════ Left column ═══════════════ */}
+        <div className="bg-card border rounded-2xl p-6 space-y-6">
+          {/* Step indicator */}
+          <div className="flex items-center gap-3">
+            <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-primary-foreground">1</div>
+            <h2 className="text-sm font-bold uppercase tracking-widest">Select Patient</h2>
+          </div>
 
-        {selectedPatient ? (
-          <div className="flex items-center justify-between bg-primary/5 border rounded-lg px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <User className="h-4 w-4 text-primary" />
+          {/* Search */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Search Database</p>
+            {selectedPatient ? (
+              <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-xl px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${selectedPatient.id}&backgroundColor=b6e3f4,c0aede,d1d4f9`}
+                    alt={selectedPatient.full_name}
+                    className="h-9 w-9 rounded-full shrink-0 bg-muted border border-white/10"
+                  />
+                  <div>
+                    <p className="font-bold text-sm">{selectedPatient.full_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      ID: #{selectedPatient.id.slice(0, 8)}
+                      {selectedPatient.phone_number && <> · {selectedPatient.phone_number}</>}
+                    </p>
+                  </div>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full" onClick={clearPatient}>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-              <div>
-                <p className="font-medium">{selectedPatient.full_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedPatient.phone_number ?? selectedPatient.email ?? selectedPatient.id}
-                </p>
+            ) : (
+              <div className="relative">
+                <UserSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  className="pl-9 rounded-xl"
+                  placeholder="Search by patient name or phone nu..."
+                  value={patientQuery}
+                  onChange={(e) => setPatientQuery(e.target.value)}
+                />
+                {patientSearching && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+                {patientResults.length > 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                    {patientResults.map((p) => (
+                      <button
+                        key={p.id}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-accent transition-colors flex items-center gap-3"
+                        onClick={() => selectPatient(p)}
+                      >
+                        <img
+                          src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${p.id}&backgroundColor=b6e3f4,c0aede,d1d4f9`}
+                          alt={p.full_name}
+                          className="h-8 w-8 rounded-full shrink-0 bg-muted border border-white/10"
+                        />
+                        <div>
+                          <p className="font-semibold">{p.full_name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            ID: #{p.id.slice(0, 8)}
+                            {p.phone_number && <> · {p.phone_number}</>}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!patientSearching && patientQuery.length >= 2 && patientResults.length === 0 && (
+                  <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-xl shadow-sm px-4 py-3 text-sm text-muted-foreground">
+                    No patients found.
+                  </div>
+                )}
               </div>
+            )}
+          </div>
+
+          {/* Recent patients / existing reports */}
+          {selectedPatient && (
+            <div className="space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Previously Uploaded</p>
+              {loadingReports ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading reports…
+                </div>
+              ) : existingReports.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">No reports yet for {selectedPatient.full_name}.</p>
+              ) : (
+                <div className="divide-y">
+                  {existingReports.map((report) => (
+                    <div key={report.id} className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                          <FileText className="h-4 w-4 text-amber-500" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{report.report_name}</p>
+                          <p className="text-xs text-muted-foreground capitalize truncate">
+                            {(report.report_category ?? '').replace('_', ' ')}
+                            {report.report_type && report.report_type !== 'other'
+                              ? ` · ${(REPORT_TYPE_LABELS as Record<string, string>)[report.report_type] ?? report.report_type}`
+                              : ''
+                            }
+                            {' · '}{format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={report.report_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline flex items-center gap-1 shrink-0 ml-2"
+                      >
+                        View <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={clearPatient}>
-              <X className="h-4 w-4" />
-            </Button>
+          )}
+        </div>
+
+        {/* ═══════════════ Right column ═══════════════ */}
+        {selectedPatient ? (
+          <div className="bg-card border rounded-2xl p-6 space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="h-7 w-7 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-primary-foreground">2</div>
+              <h2 className="text-sm font-bold uppercase tracking-widest">Upload Report</h2>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="reportName">Report Name</Label>
+                <Input
+                  id="reportName"
+                  className="rounded-xl"
+                  placeholder="e.g. Complete Blood Count, Chest X-Ray"
+                  value={reportName}
+                  onChange={(e) => setReportName(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Category</Label>
+                  <Select value={reportCategory} onValueChange={(v) => setReportCategory(v as ReportCategory)}>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select category" /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(REPORT_CATEGORY_LABELS) as [ReportCategory, string][]).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Type</Label>
+                  <Select value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
+                    <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.entries(REPORT_TYPE_LABELS) as [ReportType, string][]).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* File picker */}
+              <div className="space-y-1.5">
+                <Label>File</Label>
+                <div
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-colors hover:bg-muted/30 ${
+                    file ? 'border-primary/50 bg-primary/5' : 'border-muted-foreground/20'
+                  }`}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {file ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <FileText className="h-5 w-5 text-primary" />
+                      <span className="text-sm font-medium">{file.name}</span>
+                      <span className="text-xs text-muted-foreground">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <Upload className="h-8 w-8 opacity-40" />
+                      <p className="text-sm font-medium">Click to choose a file</p>
+                      <div className="flex gap-2 flex-wrap justify-center">
+                        {['PDF', 'DICOM', 'JPG/PNG'].map(t => (
+                          <span key={t} className="text-[10px] font-bold uppercase tracking-wide bg-muted rounded-full px-2.5 py-1">{t}</span>
+                        ))}
+                      </div>
+                      <p className="text-xs">max {MAX_FILE_MB} MB</p>
+                    </div>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button type="submit" disabled={uploading} className="flex-1 rounded-full">
+                  {uploading ? (
+                    <><Loader2 className="h-4 w-4 animate-spin mr-2" />Uploading…</>
+                  ) : (
+                    <><Upload className="h-4 w-4 mr-2" />Process & Archive Report</>
+                  )}
+                </Button>
+                {success && (
+                  <span className="flex items-center gap-1.5 text-sm text-green-600 shrink-0">
+                    <CheckCircle2 className="h-4 w-4" /> Done
+                  </span>
+                )}
+              </div>
+            </form>
           </div>
         ) : (
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              className="pl-9"
-              placeholder="Search by patient name or phone number..."
-              value={patientQuery}
-              onChange={(e) => setPatientQuery(e.target.value)}
-            />
-            {patientSearching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-            {patientResults.length > 0 && (
-              <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
-                {patientResults.map((p) => (
-                  <button
-                    key={p.id}
-                    className="w-full text-left px-4 py-2.5 text-sm hover:bg-accent transition-colors"
-                    onClick={() => selectPatient(p)}
-                  >
-                    <p className="font-medium">{p.full_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {p.phone_number ?? p.email ?? p.id}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
-            {!patientSearching && patientQuery.length >= 2 && patientResults.length === 0 && (
-              <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-lg shadow-sm px-4 py-2.5 text-sm text-muted-foreground">
-                No patients found. Only patients with appointments at your hospital are searchable.
-              </div>
-            )}
+          <div className="bg-card border rounded-2xl flex flex-col items-center justify-center text-center text-muted-foreground min-h-[400px] p-8">
+            <div className="h-20 w-20 rounded-2xl bg-muted/50 flex items-center justify-center mb-6">
+              <UserSearch className="h-10 w-10 opacity-20" />
+            </div>
+            <p className="text-xl font-bold text-foreground">Select a patient first</p>
+            <p className="text-sm mt-2 max-w-xs">
+              Search and select a patient on the left to upload their report. You'll be able to drag and drop files once a patient is linked.
+            </p>
           </div>
         )}
       </div>
 
-      {/* ── Step 2: Upload form (only when a patient is selected) ── */}
-      {selectedPatient && (
-        <div className="bg-card rounded-xl border p-6 space-y-5">
-          <h2 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-            2. Upload Report
-          </h2>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Report name */}
-            <div className="space-y-1.5">
-              <Label htmlFor="reportName">Report Name</Label>
-              <Input
-                id="reportName"
-                placeholder="e.g. Complete Blood Count, Chest X-Ray"
-                value={reportName}
-                onChange={(e) => setReportName(e.target.value)}
-              />
-            </div>
-
-            {/* Report Category + Report Type side by side */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Report Category */}
-              <div className="space-y-1.5">
-                <Label>Report Category</Label>
-                <Select value={reportCategory} onValueChange={(v) => setReportCategory(v as ReportCategory)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.entries(REPORT_CATEGORY_LABELS) as [ReportCategory, string][]).map(
-                      ([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Report Type */}
-              <div className="space-y-1.5">
-                <Label>Report Type</Label>
-                <Select value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.entries(REPORT_TYPE_LABELS) as [ReportType, string][]).map(
-                      ([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* File picker */}
-            <div className="space-y-1.5">
-              <Label>File</Label>
-              <div
-                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors hover:bg-muted/30 ${
-                  file ? 'border-primary/50 bg-primary/5' : 'border-muted-foreground/20'
-                }`}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {file ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <span className="text-sm font-medium text-foreground">{file.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      ({(file.size / 1024 / 1024).toFixed(1)} MB)
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <Upload className="h-8 w-8 opacity-40" />
-                    <p className="text-sm">Click to choose a file</p>
-                    <p className="text-xs">PDF, JPEG, PNG or WebP · max {MAX_FILE_MB} MB</p>
-                  </div>
-                )}
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.webp"
-                className="hidden"
-                onChange={handleFileChange}
-              />
-            </div>
-
-            {/* Submit */}
-            <div className="flex items-center gap-3 pt-1">
-              <Button type="submit" disabled={uploading} className="min-w-[140px]">
-                {uploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Uploading…
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload Report
-                  </>
-                )}
-              </Button>
-              {success && (
-                <span className="flex items-center gap-1.5 text-sm text-green-600">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Uploaded successfully
-                </span>
-              )}
-            </div>
-          </form>
+      {/* Footer compliance bar */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground pt-2">
+        <div className="flex items-center gap-4">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
+            Secure 256-bit Encryption
+          </span>
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            HIPAA Compliant Storage
+          </span>
         </div>
-      )}
-
-      {/* ── Step 3: Existing reports for patient ── */}
-      {selectedPatient && (
-        <div className="bg-card rounded-xl border p-6 space-y-4">
-          <h2 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
-            Previously Uploaded Reports
-          </h2>
-
-          {loadingReports ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading reports…
-            </div>
-          ) : existingReports.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">
-              No reports uploaded yet for {selectedPatient.full_name}.
-            </p>
-          ) : (
-            <div className="divide-y">
-              {existingReports.map((report) => (
-                <div key={report.id} className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                      <FileText className="h-4 w-4 text-amber-500" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{report.report_name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {(report.report_category ?? '').replace('_', ' ')}
-                        {report.report_type && report.report_type !== 'other'
-                          ? ` · ${(REPORT_TYPE_LABELS as Record<string, string>)[report.report_type] ?? report.report_type}`
-                          : ''
-                        }
-                        {' · '}
-                        {format(parseISO(report.uploaded_at), 'MMM d, yyyy')}
-                      </p>
-                    </div>
-                  </div>
-                  <a
-                    href={report.report_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-primary hover:underline flex items-center gap-1 shrink-0"
-                  >
-                    View
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 };

@@ -1,8 +1,4 @@
 import type { Request, Response, NextFunction } from "express";
-import pdfParseLib from "pdf-parse";
-const pdfParse = pdfParseLib as unknown as (
-  buf: Buffer,
-) => Promise<{ text: string }>;
 import { supabaseAdmin } from "../../config/supabase.js";
 import { requirePatient } from "../../utils/lookup.js";
 import { sendSuccess } from "../../utils/response.js";
@@ -34,64 +30,70 @@ interface CacheEntry {
 
 const trendsCache = new Map<string, CacheEntry>();
 
-// ─── PDF text extraction (silent — returns null on any failure) ────────────────
+// ─── Enriched report type for trend analysis ──────────────────────────────────
 
-async function extractTextSafe(
-  url: string,
-  maxChars = 1500,
-): Promise<string | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    const { text } = await pdfParse(buf);
-    return text?.trim().slice(0, maxChars) || null;
-  } catch {
-    return null;
-  }
+interface AnalysedReport {
+  name: string;
+  date: string;
+  /** doc_type as stored in report_analysis_cache (xray | mri | ecg | ct | report | default) */
+  docType: string;
+  /** Pre-generated patient-friendly analysis text from report_analysis_cache */
+  analysisText: string;
 }
 
 // ─── OpenRouter trend analysis ────────────────────────────────────────────────
 
 async function generateTrends(
-  reports: { name: string; date: string; text: string }[],
+  reports: AnalysedReport[],
 ): Promise<TrendsResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new AppError("OpenRouter API key not configured", 503);
 
+  // Build the report block — include the doc_type label so the model
+  // knows whether it is looking at a lab result, an MRI description, an ECG
+  // summary, etc., and can apply the correct clinical lens.
   const reportsBlock = reports
     .map(
-      (r, i) => `--- Report ${i + 1}: "${r.name}" (${r.date}) ---\n${r.text}`,
+      (r, i) =>
+        `--- Report ${i + 1}: "${r.name}" | Type: ${r.docType} | Date: ${r.date} ---\n${r.analysisText}`,
     )
     .join("\n\n");
 
   const systemPrompt =
-    "You are a clinical AI that analyses a patient's medical reports over time to identify health trends. " +
-    "You will be given multiple reports in chronological order. Your job is to:\n" +
-    "1. Identify parameters that appear in multiple reports (e.g. haemoglobin, blood glucose, cholesterol, creatinine, blood pressure, white blood cell count, platelets, kidney function, liver enzymes).\n" +
-    "2. For each such parameter, determine whether it is improving, declining, stable, or variable across the reports.\n" +
-    "3. Flag which trends are clinically concerning.\n" +
-    "4. Write a concise overall narrative for the patient.\n\n" +
+    "You are a senior clinical AI that analyses a patient's medical reports across time to identify meaningful health trends. " +
+    "The reports have already been individually analysed by specialist AI — each report block below contains a patient-friendly summary of that report, " +
+    "along with the report type (lab/blood test, MRI, ECG, CT scan, X-ray, etc.).\n\n" +
+    "Your task:\n" +
+    "1. Read all the report summaries in chronological order.\n" +
+    "2. Identify parameters, findings, or clinical markers that appear across MULTIPLE reports — applying the correct clinical lens for each modality:\n" +
+    "   • For lab/blood reports: look for numerical values (haemoglobin, glucose, cholesterol, creatinine, WBC, platelets, liver enzymes, kidney markers, etc.).\n" +
+    "   • For ECG reports: look for rhythm findings, heart rate changes, conduction patterns, or interval changes over time.\n" +
+    "   • For MRI / CT / X-ray reports: look for structural or lesion findings that are mentioned across scans (e.g. size of a mass, extent of inflammation, bone density, effusion).\n" +
+    "   • For mixed report sets: cross-correlate findings where clinically meaningful (e.g. abnormal kidney markers in blood tests alongside kidney findings in an imaging study).\n" +
+    "3. For each such finding or parameter, determine whether it is improving, declining, stable, or variable across reports.\n" +
+    "4. Flag which trends are clinically concerning.\n" +
+    "5. Write a concise overall narrative for the patient.\n\n" +
     "IMPORTANT: Respond with ONLY a valid JSON object — no markdown, no code fences, no extra text before or after. Use this exact structure:\n" +
     "{\n" +
     '  "summary": "2-4 sentence overall narrative for the patient, using \'your\'",\n' +
     '  "trends": [\n' +
     "    {\n" +
-    '      "parameter": "Full parameter name — never abbreviate (e.g. Haemoglobin, Fasting Blood Glucose, Total Cholesterol)",\n' +
+    '      "parameter": "Full parameter or finding name — never abbreviate (e.g. Haemoglobin, Fasting Blood Glucose, Heart Rate, Left Ventricular Ejection Fraction, Pleural Effusion Size)",\n' +
     '      "direction": "improving" or "declining" or "stable" or "variable",\n' +
     '      "concern": "none" or "watch" or "urgent",\n' +
-    '      "note": "1-2 sentences explaining the specific values seen across reports and what the trend means for the patient"\n' +
+    '      "note": "1-2 sentences describing what was observed across reports and what the trend means for the patient"\n' +
     "    }\n" +
     "  ]\n" +
     "}\n\n" +
     "Rules:\n" +
-    "- Only include parameters that appear in at least 2 reports with measurable/numerical values.\n" +
+    "- Only include parameters or findings that appear in at least 2 reports with observable changes or consistent mentions.\n" +
     '- "urgent" concern = clinically dangerous trend requiring immediate attention.\n' +
     '- "watch" concern = abnormal or worsening but not immediately dangerous — worth monitoring.\n' +
-    '- "none" concern = improving or holding at a healthy range.\n' +
-    "- Maximum 6 trend items — pick the most clinically significant.\n" +
-    "- Never abbreviate parameter names. Write the full name.\n" +
-    '- Speak directly to the patient using "your" in the summary and trend notes.';
+    '- "none" concern = improving or holding within a healthy/normal range.\n' +
+    "- Maximum 8 trend items — pick the most clinically significant.\n" +
+    "- Never abbreviate parameter or finding names. Write the full name.\n" +
+    '- Speak directly to the patient using "your" in the summary and trend notes.\n' +
+    "- If only one type of report is present (e.g. all ECGs), focus entirely on that modality's relevant findings.";
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -107,12 +109,12 @@ async function generateTrends(
         { role: "system", content: systemPrompt },
         {
           role: "user",
-          content: `Analyse these ${reports.length} medical reports in chronological order:\n\n${reportsBlock}`,
+          content: `Analyse these ${reports.length} medical reports in chronological order and identify health trends:\n\n${reportsBlock}`,
         },
       ],
       reasoning: { enabled: true },
       temperature: 0.2,
-      max_tokens: 900,
+      max_tokens: 1100,
     }),
   });
 
@@ -170,25 +172,24 @@ export async function getHealthTrends(
 
     const patient = await requirePatient(userId);
 
-    // Fetch all reports with a URL, ordered oldest-first
-    const { data: reports, error } = await supabaseAdmin
+    // ── 1. Fetch all patient reports (to know total count + order) ─────────
+    const { data: allReports, error: reportsErr } = await supabaseAdmin
       .from("patient_reports")
-      .select("id, report_name, report_url, uploaded_at")
+      .select("id, report_name, uploaded_at")
       .eq("patient_id", patient.id)
-      .not("report_url", "is", null)
       .order("uploaded_at", { ascending: true });
 
-    if (error) throw new AppError("Failed to fetch reports", 502);
+    if (reportsErr) throw new AppError("Failed to fetch reports", 502);
 
-    if (!reports || reports.length < 2) {
+    if (!allReports || allReports.length < 2) {
       throw new BadRequestError(
         "At least 2 reports are needed to analyse health trends.",
       );
     }
 
-    // Check cache — bust if the number of reports has changed (new upload detected)
+    // ── 2. In-memory cache — bust when report count changes ────────────────
     const cached = trendsCache.get(patient.id);
-    if (cached && cached.reportCount === reports.length) {
+    if (cached && cached.reportCount === allReports.length) {
       sendSuccess(
         res,
         { ...cached.result, cached: true },
@@ -197,35 +198,82 @@ export async function getHealthTrends(
       return;
     }
 
-    // Extract text from each PDF in parallel (silently skip failed ones)
-    console.log(
-      `[healthTrends] Extracting text from ${reports.length} PDFs for patient ${patient.id}`,
-    );
-    const extracted = await Promise.all(
-      reports.map(async (r) => ({
-        name: r.report_name,
-        date: (r.uploaded_at as string).split("T")[0],
-        text: await extractTextSafe(r.report_url as string),
-      })),
-    );
+    // ── 3. Fetch pre-analysed summaries from report_analysis_cache ─────────
+    //
+    // We prefer the English ('en') analysis text as the source for trend
+    // generation — the trend engine always operates in English regardless of
+    // the patient's preferred language.  We join via the report_id so we also
+    // get the report's upload date for chronological ordering.
+    //
+    // Strategy: for each report that has a cache entry, take the first
+    // available language (en preferred, then hi, then any).  Reports without
+    // any cache entry are silently skipped.
 
-    const usable = extracted.filter(
-      (r): r is { name: string; date: string; text: string } => r.text !== null,
-    );
+    const reportIds = allReports.map((r) => r.id as string);
 
-    if (usable.length < 2) {
-      throw new AppError(
-        "Not enough readable reports to analyse trends. Your reports may be scanned images without selectable text.",
-        422,
-      );
+    const { data: cacheRows, error: cacheErr } = await (supabaseAdmin as any)
+      .from("report_analysis_cache")
+      .select("report_id, doc_type, analysis_text, lang")
+      .in("report_id", reportIds);
+
+    if (cacheErr) {
+      console.error("[healthTrends] Could not read report_analysis_cache:", cacheErr.message);
+    }
+
+    // Group cache rows by report_id, prefer 'en' lang
+    const cacheByReportId = new Map<
+      string,
+      { doc_type: string; analysis_text: string; lang: string }
+    >();
+
+    if (cacheRows && cacheRows.length > 0) {
+      for (const row of cacheRows as {
+        report_id: string;
+        doc_type: string;
+        analysis_text: string;
+        lang: string;
+      }[]) {
+        const existing = cacheByReportId.get(row.report_id);
+        // Prefer English; if none yet, take whatever we have
+        if (!existing || (existing.lang !== "en" && row.lang === "en")) {
+          cacheByReportId.set(row.report_id, {
+            doc_type: row.doc_type,
+            analysis_text: row.analysis_text,
+            lang: row.lang,
+          });
+        }
+      }
+    }
+
+    // Build the enriched report list in chronological order
+    const analysedReports: AnalysedReport[] = [];
+
+    for (const report of allReports) {
+      const entry = cacheByReportId.get(report.id as string);
+      if (!entry) continue; // No analysis available yet — skip
+
+      analysedReports.push({
+        name: report.report_name as string,
+        date: (report.uploaded_at as string).split("T")[0],
+        docType: entry.doc_type,
+        analysisText: entry.analysis_text,
+      });
     }
 
     console.log(
-      `[healthTrends] Running trend analysis on ${usable.length} reports for patient ${patient.id}`,
+      `[healthTrends] Running trend analysis on ${analysedReports.length} reports for patient ${patient.id}`,
     );
-    const result = await generateTrends(usable);
 
-    trendsCache.set(patient.id, { result, reportCount: reports.length });
+    if (analysedReports.length < 2) {
+      throw new BadRequestError(
+        "At least 2 analysed reports are needed to identify health trends. Please open each report to trigger analysis first.",
+      );
+    }
+
+    // ── 4. Generate trends from the pre-analysed summaries ─────────────────
+    const result = await generateTrends(analysedReports);
+
+    trendsCache.set(patient.id, { result, reportCount: allReports.length });
     sendSuccess(res, result, "Health trends generated");
   } catch (err) {
     next(err);

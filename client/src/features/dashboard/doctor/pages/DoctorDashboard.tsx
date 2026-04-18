@@ -23,10 +23,9 @@ export const DoctorDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-muted/20">
+    <div className="min-h-screen bg-muted/20 overflow-x-hidden">
       <DoctorDashboardHeader activeTab={activeTab} setActiveTab={setActiveTab} />
-      
-      <main className="w-full max-w-7xl mx-auto">
+      <main className="w-full max-w-7xl mx-auto py-8">
         {renderContent()}
       </main>
     </div>

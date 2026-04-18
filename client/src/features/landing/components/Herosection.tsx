@@ -5,7 +5,7 @@ const HeroSection = () => {
   return (
     <section id="hero" className="relative pt-32 pb-24 text-center container mx-auto max-w-6xl px-4">
       <div className="absolute inset-0 gradient-mesh opacity-50 -z-10" />
-      
+
       <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary text-sm font-medium mb-8 animate-in-up">
         <IconHeartbeat className="w-4 h-4" />
         <span>Your Health, Unified</span>

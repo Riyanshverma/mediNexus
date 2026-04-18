@@ -4,6 +4,7 @@ import { startSlotLockCleanupJob } from './jobs/slotLockCleanup.js';
 import { startWaitlistQueueJob } from './jobs/waitlistQueue.js';
 import { startServiceSlotSeeder } from './jobs/serviceSlotSeeder.js';
 import { startDoctorSlotSeeder } from './jobs/doctorSlotSeeder.js';
+import { startWhatsAppReminderJob } from './jobs/whatsappReminder.js';
 import { runMigrations } from './db/runMigrations.js';
 
 const PORT = env.PORT;
@@ -20,6 +21,7 @@ runMigrations().then(() => {
     startWaitlistQueueJob();
     startServiceSlotSeeder();
     startDoctorSlotSeeder();
+    startWhatsAppReminderJob();
   });
 
   server.on('error', (err: NodeJS.ErrnoException) => {

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Users, UserCheck, UserX, Mail, Plus, Edit2, Trash2, Check } from 'lucide-react';
+import { Users, Mail, Plus, Edit2, Trash2, Check, BadgeCheck, ShieldCheck, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,8 +24,6 @@ import {
 import { hospitalService, type HospitalDoctor, type HospitalProfile } from '@/services/hospital.service';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
-
-// ─── Edit form shape ──────────────────────────────────────────────────────────
 
 interface EditForm {
   full_name: string;
@@ -58,29 +55,38 @@ const emptyEditForm = (doc: HospitalDoctor): EditForm => ({
   verified: doc.verified,
 });
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// Specialisation → accent color
+const SPEC_COLORS: Record<string, string> = {
+  cardiology: 'text-rose-400',
+  neurology: 'text-violet-400',
+  oncology: 'text-amber-400',
+  orthopedics: 'text-sky-400',
+  dentist: 'text-teal-400',
+  psychiatry: 'text-fuchsia-400',
+};
+
+const specColor = (s?: string) => {
+  if (!s) return 'text-primary';
+  return SPEC_COLORS[s.toLowerCase()] ?? 'text-primary';
+};
 
 export const AdminDoctors = () => {
   const [doctors, setDoctors] = useState<HospitalDoctor[]>([]);
   const [hospital, setHospital] = useState<HospitalProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Invite
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteSpec, setInviteSpec] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  // Verify toggle (quick action on card)
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Edit
   const [editTarget, setEditTarget] = useState<HospitalDoctor | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Delete
   const [deleteTarget, setDeleteTarget] = useState<HospitalDoctor | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -93,8 +99,6 @@ export const AdminDoctors = () => {
       .catch(() => toast.error('Failed to load doctors'))
       .finally(() => setLoading(false));
   }, []);
-
-  // ── Verify toggle ────────────────────────────────────────────────────────
 
   const toggleVerified = async (doc: HospitalDoctor) => {
     setTogglingId(doc.id);
@@ -109,8 +113,6 @@ export const AdminDoctors = () => {
       setTogglingId(null);
     }
   };
-
-  // ── Invite ───────────────────────────────────────────────────────────────
 
   const handleInvite = async () => {
     if (!hospital) return;
@@ -134,8 +136,6 @@ export const AdminDoctors = () => {
       setInviting(false);
     }
   };
-
-  // ── Edit ─────────────────────────────────────────────────────────────────
 
   const openEdit = (doc: HospitalDoctor) => {
     setEditTarget(doc);
@@ -180,8 +180,6 @@ export const AdminDoctors = () => {
     }
   };
 
-  // ── Delete ───────────────────────────────────────────────────────────────
-
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -197,135 +195,164 @@ export const AdminDoctors = () => {
     }
   };
 
-  // ── Loading skeleton ─────────────────────────────────────────────────────
-
   if (loading) {
     return (
-      <div className="p-8 space-y-3 animate-in fade-in duration-300">
-        {[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />)}
+      <div className="p-8 space-y-4 animate-in fade-in duration-300">
+        {[...Array(3)].map((_, i) => <div key={i} className="h-24 bg-muted/50 rounded-2xl animate-pulse" />)}
       </div>
     );
   }
 
-  // ── Render ───────────────────────────────────────────────────────────────
+  const verifiedCount = doctors.filter(d => d.verified).length;
+  const pendingCount = doctors.length - verifiedCount;
 
   return (
-    <div className="p-8 animate-in fade-in duration-500 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="p-6 animate-in fade-in duration-500 space-y-6">
+      {/* Page header */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-light tracking-tight">Doctors</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {doctors.length} doctor{doctors.length !== 1 ? 's' : ''} registered
+          <h1 className="text-3xl font-bold tracking-tight">Registered Doctors</h1>
+          <p className="text-muted-foreground mt-1 text-sm max-w-md">
+            Oversee medical staff credentials and operational availability within the Clinical ecosystem.
           </p>
         </div>
-        <Button onClick={() => setInviteOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Invite Doctor
+        <Button onClick={() => setInviteOpen(true)} className="rounded-full px-5 shrink-0">
+          <Plus className="h-4 w-4 mr-2" /> Register Doctor
         </Button>
       </div>
 
-      {/* Doctor list */}
-      {doctors.length === 0 ? (
-        <div className="bg-card rounded-xl border p-12 text-center text-muted-foreground">
-          <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p>No doctors registered yet.</p>
-          <p className="text-sm mt-1">Invite a doctor to get started.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {doctors.map(doc => (
-            <div key={doc.id} className="bg-card rounded-xl border p-4 flex items-center justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium truncate">{doc.full_name}</p>
-                  <Badge
-                    variant={doc.verified ? 'default' : 'secondary'}
-                    className="shrink-0 text-xs"
-                  >
-                    {doc.verified ? 'Verified' : 'Unverified'}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {doc.specialisation}
-                  {doc.department ? ` · ${doc.department}` : ''}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {doc.experience_years != null ? `${doc.experience_years} yrs exp` : ''}
-                  {doc.consultation_fee != null ? ` · ₹${doc.consultation_fee}` : ''}
-                  {doc.experience_years == null && doc.consultation_fee == null
-                    ? `Joined ${format(parseISO(doc.created_at), 'MMM d, yyyy')}`
-                    : ''}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {/* Verify / Unverify quick toggle */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => toggleVerified(doc)}
-                  disabled={togglingId === doc.id}
-                  className={
-                    doc.verified
-                      ? 'hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30'
-                      : 'hover:bg-green-500/10 hover:text-green-600 hover:border-green-500/30'
-                  }
-                >
-                  {togglingId === doc.id
-                    ? '…'
-                    : doc.verified
-                    ? <><UserX className="h-4 w-4 mr-1.5" />Unverify</>
-                    : <><UserCheck className="h-4 w-4 mr-1.5" />Verify</>}
-                </Button>
-                {/* Edit */}
-                <Button variant="ghost" size="icon" onClick={() => openEdit(doc)}>
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-                {/* Delete */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="hover:text-destructive"
-                  onClick={() => setDeleteTarget(doc)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+      {/* Stat cards — matching image */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Total Physicians', value: doctors.length, icon: Users },
+          { label: 'Verified', value: verifiedCount, icon: ShieldCheck },
+          { label: 'Pending Review', value: pendingCount, icon: ClipboardList },
+        ].map(({ label, value, icon: Icon }) => (
+          <div key={label} className="bg-card border rounded-2xl p-6 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{label}</p>
+              <p className="text-5xl font-bold">{value}</p>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+              <Icon className="h-7 w-7 text-primary/60" />
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* ── Invite Dialog ─────────────────────────────────────────────────── */}
+      {/* Doctor registry table */}
+      <div className="bg-card border rounded-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Doctor Registry</p>
+          <p className="text-xs text-muted-foreground">Showing {doctors.length} result{doctors.length !== 1 ? 's' : ''}</p>
+        </div>
+
+        {doctors.length === 0 ? (
+          <div className="p-16 text-center text-muted-foreground">
+            <Users className="h-10 w-10 mx-auto mb-3 opacity-30" />
+            <p className="font-medium">No doctors registered yet.</p>
+            <p className="text-sm mt-1">Use "Register Doctor" to send an invite.</p>
+          </div>
+        ) : (
+          <div className="divide-y">
+            {doctors.map(doc => (
+              <div
+                key={doc.id}
+                className="flex items-center gap-4 px-6 py-5 hover:bg-muted/20 transition-colors"
+              >
+                {/* Avatar */}
+                <img
+                  src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${doc.id}&backgroundColor=b6e3f4,c0aede,d1d4f9`}
+                  alt={doc.full_name}
+                  className="h-12 w-12 rounded-xl shrink-0 border border-white/10 bg-muted object-cover"
+                />
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-base truncate">{doc.full_name}</p>
+                  <p className="text-sm mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span className={`font-semibold ${specColor(doc.specialisation)}`}>
+                      {doc.specialisation ?? 'General'}
+                    </span>
+                    {doc.experience_years != null && (
+                      <>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground">{doc.experience_years} Years Experience</span>
+                      </>
+                    )}
+                    {doc.consultation_fee != null && (
+                      <>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground">Fee: ₹{doc.consultation_fee}</span>
+                      </>
+                    )}
+                    {doc.experience_years == null && doc.consultation_fee == null && (
+                      <span className="text-muted-foreground text-xs">
+                        Joined {format(parseISO(doc.created_at), 'MMM d, yyyy')}
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Verified badge pill */}
+                  {doc.verified && (
+                    <span className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground rounded-full px-3 py-1 text-xs font-bold">
+                      <BadgeCheck className="h-3.5 w-3.5" /> Verified
+                    </span>
+                  )}
+
+                  {/* Verify / Unverify action pill */}
+                  <button
+                    onClick={() => toggleVerified(doc)}
+                    disabled={togglingId === doc.id}
+                    className={`rounded-full px-3 py-1 text-xs font-bold border transition-all ${
+                      doc.verified
+                        ? 'border-destructive/50 text-destructive hover:bg-destructive/10'
+                        : 'border-primary/50 text-primary hover:bg-primary/10'
+                    } disabled:opacity-50`}
+                  >
+                    {togglingId === doc.id ? '…' : doc.verified ? 'Unverify' : 'Verify Now'}
+                  </button>
+
+                  <button
+                    onClick={() => openEdit(doc)}
+                    className="h-9 w-9 rounded-full border border-border flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(doc)}
+                    className="h-9 w-9 rounded-full border border-border flex items-center justify-center hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Invite Dialog ── */}
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Invite a Doctor</DialogTitle>
+            <DialogTitle>Register a Doctor</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label>Full Name</Label>
-              <Input
-                placeholder="Dr. Jane Smith"
-                value={inviteName}
-                onChange={e => setInviteName(e.target.value)}
-              />
+              <Input placeholder="Dr. Jane Smith" value={inviteName} onChange={e => setInviteName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Email</Label>
-              <Input
-                type="email"
-                placeholder="doctor@example.com"
-                value={inviteEmail}
-                onChange={e => setInviteEmail(e.target.value)}
-              />
+              <Input type="email" placeholder="doctor@example.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Specialisation</Label>
-              <Input
-                placeholder="e.g. Cardiology"
-                value={inviteSpec}
-                onChange={e => setInviteSpec(e.target.value)}
-              />
+              <Input placeholder="e.g. Cardiology" value={inviteSpec} onChange={e => setInviteSpec(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
@@ -338,150 +365,78 @@ export const AdminDoctors = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── Edit Dialog ───────────────────────────────────────────────────── */}
+      {/* ── Edit Dialog ── */}
       <Dialog open={!!editTarget} onOpenChange={open => { if (!open) { setEditTarget(null); setEditForm(null); } }}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Doctor</DialogTitle>
+            <DialogTitle>Edit Doctor — {editTarget?.full_name}</DialogTitle>
           </DialogHeader>
           {editForm && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
-              {/* Identity */}
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Full Name</Label>
-                <Input
-                  placeholder="Dr. Jane Smith"
-                  value={editForm.full_name}
-                  onChange={e => setF({ full_name: e.target.value })}
-                />
+                <Input value={editForm.full_name} onChange={e => setF({ full_name: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Specialisation</Label>
-                <Input
-                  placeholder="e.g. Cardiology"
-                  value={editForm.specialisation}
-                  onChange={e => setF({ specialisation: e.target.value })}
-                />
+                <Input value={editForm.specialisation} onChange={e => setF({ specialisation: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Department</Label>
-                <Input
-                  placeholder="e.g. Cardiology Dept."
-                  value={editForm.department}
-                  onChange={e => setF({ department: e.target.value })}
-                />
+                <Input placeholder="e.g. Cardiology Dept." value={editForm.department} onChange={e => setF({ department: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Qualifications</Label>
-                <Input
-                  placeholder="e.g. MBBS, MD"
-                  value={editForm.qualifications}
-                  onChange={e => setF({ qualifications: e.target.value })}
-                />
+                <Input placeholder="e.g. MBBS, MD" value={editForm.qualifications} onChange={e => setF({ qualifications: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Registration No.</Label>
-                <Input
-                  placeholder="e.g. MCI-12345"
-                  value={editForm.registration_number}
-                  onChange={e => setF({ registration_number: e.target.value })}
-                />
+                <Input value={editForm.registration_number} onChange={e => setF({ registration_number: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Years of Experience</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={70}
-                  value={editForm.experience_years}
-                  onChange={e => setF({ experience_years: e.target.value })}
-                />
+                <Input type="number" min={0} max={70} value={editForm.experience_years} onChange={e => setF({ experience_years: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Consultation Fee (₹)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={editForm.consultation_fee}
-                  onChange={e => setF({ consultation_fee: e.target.value })}
-                />
+                <Input type="number" min={0} step="0.01" value={editForm.consultation_fee} onChange={e => setF({ consultation_fee: e.target.value })} />
               </div>
-
-              {/* Scheduling */}
               <div className="space-y-1.5">
                 <Label>Available From</Label>
-                <Input
-                  type="time"
-                  value={editForm.available_from}
-                  onChange={e => setF({ available_from: e.target.value })}
-                />
+                <Input type="time" value={editForm.available_from} onChange={e => setF({ available_from: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Available To</Label>
-                <Input
-                  type="time"
-                  value={editForm.available_to}
-                  onChange={e => setF({ available_to: e.target.value })}
-                />
+                <Input type="time" value={editForm.available_to} onChange={e => setF({ available_to: e.target.value })} />
               </div>
-
               <div className="space-y-1.5">
                 <Label>Slot Duration (mins)</Label>
-                <Input
-                  type="number"
-                  min={5}
-                  max={120}
-                  step={5}
-                  value={editForm.slot_duration_mins}
-                  onChange={e => setF({ slot_duration_mins: e.target.value })}
-                />
+                <Input type="number" min={5} max={120} step={5} value={editForm.slot_duration_mins} onChange={e => setF({ slot_duration_mins: e.target.value })} />
               </div>
-
-              {/* Verified toggle */}
               <div className="flex items-center gap-3 pt-2">
                 <button
                   type="button"
                   role="switch"
                   aria-checked={editForm.verified}
                   onClick={() => setF({ verified: !editForm.verified })}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
                     editForm.verified ? 'bg-primary' : 'bg-muted-foreground/30'
                   }`}
                 >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                      editForm.verified ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
+                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    editForm.verified ? 'translate-x-4' : 'translate-x-0'
+                  }`} />
                 </button>
                 <Label>Verified</Label>
               </div>
-
-              {/* Bio */}
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Bio <span className="text-muted-foreground font-normal text-sm">(optional)</span></Label>
-                <Textarea
-                  rows={3}
-                  maxLength={500}
-                  placeholder="Brief description…"
-                  value={editForm.bio}
-                  onChange={e => setF({ bio: e.target.value })}
-                />
+                <Textarea rows={3} maxLength={500} placeholder="Brief description…" value={editForm.bio} onChange={e => setF({ bio: e.target.value })} />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setEditTarget(null); setEditForm(null); }}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => { setEditTarget(null); setEditForm(null); }}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving ? '…' : <><Check className="h-4 w-4 mr-1" />Save Changes</>}
             </Button>
@@ -489,7 +444,7 @@ export const AdminDoctors = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── Delete Confirmation ───────────────────────────────────────────── */}
+      {/* ── Delete Confirmation ── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

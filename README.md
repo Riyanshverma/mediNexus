@@ -97,7 +97,7 @@ EMAIL_PASS=
 ```
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
-VITE_API_URL=http://localhost:3000
+VITE_API_URL=http://localhost:5000
 ```
 
 ### Run
@@ -114,4 +114,4 @@ cd server && npm run dev
 cd client && npm run dev
 ```
 
-Backend runs on port **3000**, frontend on port **5173**.
+Backend runs on port **5000**, frontend on port **5173**.

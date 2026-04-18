@@ -1,5 +1,6 @@
 import { Toaster } from '@/components/ui/sonner';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from 'next-themes';
 import { AuthProvider } from '@/context/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import PublicOnlyRoute from '@/components/PublicOnlyRoute';
@@ -10,10 +11,14 @@ import PatientDiscover from '@/features/discover/PatientDiscover';
 import PatientServiceBooking from '@/features/discover/PatientServiceBooking';
 
 const App = () => (
-  <Router>
-    <AuthProvider>
-      <div className="min-h-screen bg-background text-foreground">
-        <Routes>
+  <ThemeProvider attribute="class" defaultTheme="dark">
+    <Router>
+      <AuthProvider>
+        <div className="min-h-screen bg-background text-foreground relative overflow-hidden">
+          {/* Universal Top-Right Gradient Glow */}
+          <div className="absolute -top-64 -right-64 w-[800px] h-[800px] bg-primary/10 blur-[150px] rounded-full pointer-events-none z-0" />
+          <div className="relative z-10 h-full">
+            <Routes>
           {/* ── Public routes ───────────────────────────────────────────── */}
           <Route path="/" element={<LandingPage />} />
           <Route
@@ -78,12 +83,13 @@ const App = () => (
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-
-        <Toaster position="bottom-right" theme="dark" richColors={true} />
-      </div>
-    </AuthProvider>
-  </Router>
+            </Routes>
+            <Toaster position="bottom-right" theme="dark" richColors={true} />
+          </div>
+        </div>
+      </AuthProvider>
+    </Router>
+  </ThemeProvider>
 );
 
 export default App;

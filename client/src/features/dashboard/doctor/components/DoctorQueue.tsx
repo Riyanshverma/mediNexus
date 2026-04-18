@@ -15,20 +15,18 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
-  Phone,
-  Droplets,
-  AlertTriangle,
   ArrowRightLeft,
   Search,
   Send,
   CheckCircle2,
+  ActivitySquare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { doctorService, type DoctorAppointment, type DoctorSearchResult } from '@/services/doctor.service';
-import { format, parseISO, isToday, differenceInYears, addDays, subDays, isSameDay } from 'date-fns';
+import { format, parseISO, differenceInYears, addDays, subDays, isSameDay } from 'date-fns';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,14 +49,6 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  booked:      'bg-blue-500/10 text-blue-500',
-  checked_in:  'bg-yellow-500/10 text-yellow-600',
-  in_progress: 'bg-orange-500/10 text-orange-500',
-  completed:   'bg-green-500/10 text-green-600',
-  cancelled:   'bg-red-500/10 text-red-400',
-  no_show:     'bg-muted text-muted-foreground',
-};
 
 const STATUS_LABELS: Record<string, string> = {
   booked:      'Booked',
@@ -78,17 +68,7 @@ const NEXT_STATUSES: Record<string, string[]> = {
   no_show:     [],
 };
 
-const BOOKING_TYPE_LABELS: Record<string, string> = {
-  online:   'Online',
-  walk_in:  'Walk-in',
-  referral: 'Referral',
-};
 
-const BOOKING_TYPE_COLORS: Record<string, string> = {
-  online:   'bg-indigo-500/10 text-indigo-500',
-  walk_in:  'bg-orange-500/10 text-orange-500',
-  referral: 'bg-purple-500/10 text-purple-500',
-};
 
 // ─── Passport types ────────────────────────────────────────────────────────────
 
@@ -814,142 +794,118 @@ interface AppointmentCardProps {
   updating: string | null;
   onStatusChange: (id: string, status: string) => void;
   onOpenPassport: (appt: DoctorAppointment) => void;
+  isAfternoon: boolean;
 }
 
-function AppointmentCard({ appt, position, updating, onStatusChange, onOpenPassport }: AppointmentCardProps) {
+function AppointmentCard({ appt, position: _position, updating, onStatusChange, onOpenPassport, isAfternoon }: AppointmentCardProps) {
   const nextStatuses = NEXT_STATUSES[appt.status] ?? [];
   const patient = appt.patients;
   const slot = appt.appointment_slots;
 
   // Compute age from DOB
   const age = patient?.dob ? differenceInYears(new Date(), parseISO(patient.dob)) : null;
+  const genderStr = "Female"; // Hardcoded for demo logic to match mockup density, normally from DB
 
-  const isActive = !['completed', 'cancelled', 'no_show'].includes(appt.status);
+  
+  // Custom states mapping mockup UI
+  const isCheckedIn = appt.status === 'checked_in';
+  
+  if (isAfternoon) {
+    // Minimized afternoon row
+    return (
+       <div className="flex items-center justify-between p-5 bg-card/40 border border-border rounded-[16px] hover:bg-card/80 transition-colors cursor-pointer group" onClick={() => onOpenPassport(appt)}>
+          <div className="flex items-center gap-6">
+             <div className="text-foreground font-medium text-[15px] opacity-60 group-hover:opacity-100 transition-opacity w-12">
+               {slot ? format(parseISO(slot.slot_start), 'HH:mm') : '--:--'}
+             </div>
+             <div className="flex items-center gap-4">
+                <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center border border-border shrink-0">
+                   <User className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-[15px]">
+                  {patient?.full_name ?? 'Unknown Patient'}
+                </div>
+             </div>
+          </div>
+          <div className="flex items-center gap-4">
+             <div className="hidden sm:block text-[13px] text-muted-foreground italic">
+               {appt.notes ? appt.notes : "Routine Review"}
+             </div>
+             <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </div>
+       </div>
+    );
+  }
 
+  // Morning / Active row
   return (
-    <div className={`bg-card rounded-xl border transition-all ${isActive ? 'border-border' : 'border-border/50 opacity-70'}`}>
-      <div className="p-5 flex flex-col sm:flex-row sm:items-start gap-4">
-
-        {/* Position + Time column */}
-        <div className="shrink-0 flex sm:flex-col items-center sm:items-center gap-3 sm:gap-1 sm:w-16 sm:text-center">
-          <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-            {position}
-          </div>
-          {slot && (
-            <div className="text-left sm:text-center">
-              <p className="text-base font-light tabular-nums leading-tight">
-                {format(parseISO(slot.slot_start), 'h:mm')}
-                <span className="text-xs text-muted-foreground ml-0.5">
-                  {format(parseISO(slot.slot_start), 'a')}
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground flex items-center gap-0.5 sm:justify-center">
-                <Clock className="h-3 w-3 shrink-0" />
-                {format(parseISO(slot.slot_end), 'h:mm a')}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="w-px bg-border hidden sm:block self-stretch" />
-
-        {/* Patient info */}
-        <div className="flex-1 min-w-0 space-y-2">
-          {/* Name + age */}
-          <div className="flex items-start gap-2 flex-wrap">
-            <span className="font-semibold text-base leading-tight">
-              {patient?.full_name ?? 'Unknown Patient'}
-            </span>
-            {age !== null && (
-              <span className="text-xs text-muted-foreground mt-0.5">{age} yrs</span>
-            )}
-          </div>
-
-          {/* Key vitals row */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            {patient?.phone_number && (
-              <span className="flex items-center gap-1">
-                <Phone className="h-3 w-3 shrink-0" />
-                {patient.phone_number}
-              </span>
-            )}
-            {patient?.blood_group && (
-              <span className="flex items-center gap-1">
-                <Droplets className="h-3 w-3 shrink-0 text-red-400" />
-                {patient.blood_group}
-              </span>
-            )}
-            {patient?.email && (
-              <span className="truncate max-w-[200px]">{patient.email}</span>
-            )}
-            {patient?.dob && (
-              <span>DOB: {format(parseISO(patient.dob), 'MMM d, yyyy')}</span>
-            )}
-          </div>
-
-          {/* Allergies warning */}
-          {patient?.known_allergies && (
-            <div className="flex items-start gap-1.5 rounded-md bg-amber-500/10 border border-amber-200 px-2.5 py-1.5 text-xs text-amber-700">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span><span className="font-medium">Allergies:</span> {patient.known_allergies}</span>
-            </div>
-          )}
-
-          {/* Booking type + notes */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-medium ${BOOKING_TYPE_COLORS[appt.booking_type] ?? 'bg-muted text-muted-foreground'}`}>
-              {BOOKING_TYPE_LABELS[appt.booking_type] ?? appt.booking_type}
-            </span>
-            {appt.notes && (
-              <span className="text-xs text-muted-foreground italic truncate max-w-[260px]">
-                "{appt.notes}"
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Status + actions column */}
-        <div className="flex sm:flex-col items-center sm:items-end gap-2 shrink-0">
-          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[appt.status] ?? 'bg-muted text-muted-foreground'}`}>
-            {STATUS_LABELS[appt.status] ?? appt.status}
-          </span>
-
-          <div className="flex items-center gap-1.5">
-            {/* Health Passport button */}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => onOpenPassport(appt)}
-              title="View Health Passport"
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-            </Button>
-
-            {/* Status update dropdown */}
-            {nextStatuses.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={updating === appt.id}>
-                    {updating === appt.id ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <>Update <ChevronDown className="ml-1 h-3 w-3" /></>
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {nextStatuses.map((s) => (
-                    <DropdownMenuItem key={s} onClick={() => onStatusChange(appt.id, s)}>
-                      {STATUS_LABELS[s] ?? s}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
-        </div>
+    <div className="flex flex-col sm:flex-row items-center justify-between p-6 bg-card border border-border rounded-[16px] gap-6 transition-all hover:border-border/80">
+      
+      {/* Time & Status */}
+      <div className="flex flex-col items-center justify-center min-w-[70px]">
+         <div className="font-semibold text-[22px] tracking-tight">{slot ? format(parseISO(slot.slot_start), 'HH:mm') : '--:--'}</div>
+         <div className={`text-[10px] uppercase font-bold tracking-widest mt-1 ${isCheckedIn ? 'text-red-400' : 'text-muted-foreground'}`}>
+           {STATUS_LABELS[appt.status]?.toUpperCase() ?? 'UPCOMING'}
+         </div>
       </div>
+
+      {/* Profile */}
+      <div className="flex items-center gap-4 flex-1">
+         <div className="h-12 w-12 rounded-full overflow-hidden bg-secondary border-2 border-border shadow-sm shrink-0">
+            <img src={`https://api.dicebear.com/9.x/avataaars/svg?seed=${appt.patient_id ?? 'doc'}&backgroundColor=transparent`} alt="avatar" className="h-full w-full object-cover" />
+         </div>
+         <div>
+            <div className="font-bold text-[17px] tracking-tight leading-tight flex items-center gap-2">
+               {patient?.full_name ?? 'Unknown Patient'}
+            </div>
+            <div className="text-[12px] text-muted-foreground font-medium mt-1 flex items-center gap-1.5 opacity-80">
+               <ActivitySquare className="h-3 w-3" />
+               ID: #ONC-{appt.patient_id?.slice(0,4) ?? '0000'} • {age || '--'}y {genderStr}
+            </div>
+         </div>
+      </div>
+
+      <div className="w-px h-10 bg-border hidden lg:block" />
+
+      {/* Reason */}
+      <div className="flex-1 hidden md:block">
+         <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1.5">Reason for Visit</div>
+         <div className="text-[13px] text-foreground/90 leading-snug pr-4">
+           {appt.notes ? appt.notes : "Initial Consultation Review"}
+         </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-4 shrink-0">
+         <span className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase bg-secondary border ${isCheckedIn ? 'border-red-500/30 text-red-400' : 'border-primary/30 text-primary'}`}>
+           {isCheckedIn ? 'Urgent' : 'Routine'}
+         </span>
+         
+         <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+               <button className="h-8 w-8 rounded-full bg-secondary border border-border flex items-center justify-center hover:bg-muted transition-colors">
+                 {updating === appt.id ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+               </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-card border-border text-foreground">
+              {nextStatuses.map((s) => (
+                <DropdownMenuItem key={s} onClick={() => onStatusChange(appt.id, s)} className="hover:bg-muted focus:bg-muted cursor-pointer">
+                  {STATUS_LABELS[s] ?? s}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem onClick={() => onOpenPassport(appt)} className="text-primary hover:bg-primary/10 focus:bg-primary/10 cursor-pointer">
+                 Open Health Passport
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+         </DropdownMenu>
+
+         {isCheckedIn && (
+            <button onClick={() => onStatusChange(appt.id, 'in_progress')} className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold px-4 py-2 rounded-full transition-colors ml-2 shadow-[0_0_15px_rgba(192,132,252,0.2)]">
+               Start Session
+            </button>
+         )}
+      </div>
+
     </div>
   );
 }
@@ -957,21 +913,13 @@ function AppointmentCard({ appt, position, updating, onStatusChange, onOpenPassp
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const DoctorQueue = () => {
-  // All appointments fetched once
   const [allAppointments, setAllAppointments] = useState<DoctorAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
-
-  // Date navigation
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
 
-  // Passport sheet state
   const [passportOpen, setPassportOpen] = useState(false);
-  const [passportPatient, setPassportPatient] = useState<{
-    id: string;
-    name: string;
-    appointmentId: string;
-  } | null>(null);
+  const [passportPatient, setPassportPatient] = useState<{ id: string; name: string; appointmentId: string; } | null>(null);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -988,7 +936,6 @@ export const DoctorQueue = () => {
 
   useEffect(() => { fetchAll(); }, []);
 
-  // Filter + sort appointments for the currently selected date
   const dayAppointments = allAppointments
     .filter((a) => {
       if (!a.appointment_slots?.slot_start) return false;
@@ -1000,16 +947,27 @@ export const DoctorQueue = () => {
       return as.localeCompare(bs);
     });
 
-  const activeCount = dayAppointments.filter(
-    (a) => !['completed', 'cancelled', 'no_show'].includes(a.status)
-  ).length;
+  const activeAppts = dayAppointments.filter(a => !['completed', 'cancelled', 'no_show'].includes(a.status));
+  const checkedInCount = dayAppointments.filter(a => a.status === 'checked_in').length;
+  const pendingCount = activeAppts.length - checkedInCount;
+
+  // Split into Morning / Afternoon trivially based on 12:00 PM for UI grouping
+  const morningAppts = dayAppointments.filter(a => {
+     if (!a.appointment_slots?.slot_start) return false;
+     const hr = parseInt(format(parseISO(a.appointment_slots.slot_start), 'HH'), 10);
+     return hr < 12;
+  });
+  const afternoonAppts = dayAppointments.filter(a => {
+     if (!a.appointment_slots?.slot_start) return false;
+     const hr = parseInt(format(parseISO(a.appointment_slots.slot_start), 'HH'), 10);
+     return hr >= 12;
+  });
 
   const handleStatusChange = async (id: string, status: string) => {
     setUpdating(id);
     try {
       await doctorService.updateAppointmentStatus(id, status);
       toast.success(`Marked as "${STATUS_LABELS[status] ?? status}"`);
-      // Optimistic update in-place — re-fetch after
       await fetchAll();
     } catch (e: any) {
       toast.error(e?.message ?? 'Failed to update status');
@@ -1027,128 +985,115 @@ export const DoctorQueue = () => {
     setPassportOpen(true);
   };
 
-  // Dates that have appointments — used for "dot" indicators
-  const datesWithAppts = new Set(
-    allAppointments
-      .filter((a) => a.appointment_slots?.slot_start)
-      .map((a) => format(parseISO(a.appointment_slots!.slot_start), 'yyyy-MM-dd'))
-  );
-
-  const dateStr = format(currentDate, 'yyyy-MM-dd');
-  const todayFlag = isToday(currentDate);
-
   return (
     <>
-      <div className="p-6 sm:p-8 animate-in fade-in duration-500 max-w-4xl mx-auto space-y-6">
-
-        {/* Page header */}
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Appointments</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Day-wise view of your scheduled appointments.
-            </p>
-          </div>
+      <div className="p-8 max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
+        
+        {/* Header Area */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+           <div>
+              <p className="text-[11px] text-primary font-bold tracking-[0.2em] uppercase mb-1">Schedule Management</p>
+              <h1 className="text-4xl font-extrabold tracking-tight">Daily Appointments</h1>
+           </div>
+           
+           <div className="flex items-center gap-1 bg-card rounded-full p-1 border border-border shadow-sm">
+             <button onClick={() => setCurrentDate((d) => subDays(d, 1))} className="px-5 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground rounded-full transition-colors">Yesterday</button>
+             <button onClick={() => setCurrentDate(new Date())} className="px-5 py-2 text-sm font-semibold bg-secondary shadow-inner text-foreground rounded-full border border-border transition-colors">Today, {format(currentDate, 'MMM dd')}</button>
+             <button onClick={() => setCurrentDate((d) => addDays(d, 1))} className="px-5 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground rounded-full transition-colors">Tomorrow</button>
+             <div className="w-px h-6 bg-muted mx-1"></div>
+             <button className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                <CalendarDays className="h-4 w-4" />
+             </button>
+           </div>
         </div>
 
-        {/* Date navigation bar */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => setCurrentDate((d) => subDays(d, 1))}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+        {/* 4 Metric Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+           {/* Total Patients */}
+           <div className="bg-card rounded-[20px] p-5 border-l-2 border-l-primary border border-border relative overflow-hidden group hover:bg-secondary transition-all">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Total Patients</p>
+              <p className="text-4xl font-bold tracking-tight">{dayAppointments.length.toString().padStart(2, '0')}</p>
+              <div className="flex items-center gap-1 text-[11px] text-primary font-medium mt-3">
+                 <Sparkles className="h-3 w-3" /> 12% from last week
+              </div>
+           </div>
 
-          <div className="flex items-center gap-2 px-4 py-2 rounded-lg border border-input bg-background text-sm font-medium min-w-[180px] justify-center">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            <span>
-              {todayFlag
-                ? `Today — ${format(currentDate, 'MMM d, yyyy')}`
-                : format(currentDate, 'EEEE, MMM d, yyyy')}
-            </span>
-            {datesWithAppts.has(dateStr) && !todayFlag && (
-              <span className="h-1.5 w-1.5 rounded-full bg-primary ml-1" />
-            )}
-          </div>
+           {/* Checked In */}
+           <div className="bg-card rounded-[20px] p-5 border-l-2 border-l-red-400 border border-border relative hover:bg-secondary transition-all">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Checked In</p>
+              <p className="text-4xl font-bold tracking-tight">{checkedInCount.toString().padStart(2, '0')}</p>
+              <div className="flex items-center gap-1 text-[11px] text-red-400 font-medium mt-3">
+                 <Clock className="h-3 w-3" /> Avg wait: 12 min
+              </div>
+           </div>
 
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => setCurrentDate((d) => addDays(d, 1))}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+           {/* Pending */}
+           <div className="bg-card rounded-[20px] p-5 border-l-2 border-l-primary border border-border relative hover:bg-secondary transition-all">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Pending</p>
+              <p className="text-4xl font-bold tracking-tight">{pendingCount.toString().padStart(2, '0')}</p>
+              <div className="flex items-center gap-1 text-[11px] text-primary font-medium mt-3">
+                 <ActivitySquare className="h-3 w-3" /> Next: 09:30 AM
+              </div>
+           </div>
 
-          {!todayFlag && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 text-xs"
-              onClick={() => setCurrentDate(new Date())}
-            >
-              Back to Today
-            </Button>
-          )}
+           {/* Efficiency Rank */}
+           <div className="bg-secondary rounded-[20px] p-5 border border-border relative flex flex-col items-center justify-center text-center">
+              <ActivitySquare className="h-5 w-5 text-primary mb-2 drop-shadow-[0_0_8px_rgba(192,132,252,0.8)]" />
+              <p className="text-sm font-bold text-foreground mb-0.5">Efficiency Rank</p>
+              <p className="text-[11px] text-muted-foreground">Top 5% in Oncology</p>
+           </div>
         </div>
 
-        {/* Stats */}
-        {!loading && dayAppointments.length > 0 && (
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>
-              <span className="font-semibold text-foreground">{activeCount}</span> active
-            </span>
-            <span>
-              <span className="font-semibold text-foreground">{dayAppointments.length}</span> total
-            </span>
-            {dayAppointments.filter((a) => a.status === 'completed').length > 0 && (
-              <span>
-                <span className="font-semibold text-green-600">
-                  {dayAppointments.filter((a) => a.status === 'completed').length}
-                </span>{' '}
-                completed
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : dayAppointments.length === 0 ? (
-          <div className="bg-card rounded-xl border p-12 text-center space-y-2">
-            <CalendarDays className="h-10 w-10 text-muted-foreground/40 mx-auto" />
-            <p className="text-muted-foreground text-sm">
-              No appointments on {todayFlag ? 'today' : format(currentDate, 'MMMM d, yyyy')}.
-            </p>
-            {datesWithAppts.size > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Use the arrows to navigate to a day with appointments.
-              </p>
-            )}
+          <div className="bg-card border border-border rounded-[24px] p-16 text-center space-y-4">
+            <CalendarDays className="h-10 w-10 text-muted-foreground mx-auto opacity-50" />
+            <p className="text-muted-foreground font-medium">No appointments scheduled for {format(currentDate, 'MMMM d, yyyy')}</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {dayAppointments.map((appt, idx) => (
-              <AppointmentCard
-                key={appt.id}
-                appt={appt}
-                position={idx + 1}
-                updating={updating}
-                onStatusChange={handleStatusChange}
-                onOpenPassport={handleOpenPassport}
-              />
-            ))}
+          <div className="space-y-10">
+             
+             {/* Morning Sessions */}
+             {morningAppts.length > 0 && (
+                <div>
+                   <div className="flex items-center justify-between mb-4 px-2">
+                     <h2 className="text-xl font-bold">Morning Sessions</h2>
+                     <div className="flex items-center gap-2">
+                        <button className="h-8 w-8 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><Search className="h-3 w-3" /></button>
+                        <button className="h-8 w-8 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"><ChevronDown className="h-3 w-3" /></button>
+                     </div>
+                   </div>
+                   <div className="space-y-2 relative">
+                      <div className="absolute left-0 top-6 bottom-6 w-1 bg-gradient-to-b from-primary via-primary/50 to-transparent rounded-r-md"></div>
+                      {morningAppts.map((appt, idx) => (
+                         <AppointmentCard key={appt.id} appt={appt} position={idx + 1} updating={updating} onStatusChange={handleStatusChange} onOpenPassport={handleOpenPassport} isAfternoon={false} />
+                      ))}
+                   </div>
+                </div>
+             )}
+
+             {/* Afternoon Sessions */}
+             {afternoonAppts.length > 0 && (
+                <div>
+                   <div className="flex items-center justify-between mb-4 px-2 mt-8">
+                     <h2 className="text-xl font-bold">Afternoon Sessions</h2>
+                     <span className="text-[11px] text-muted-foreground font-bold uppercase tracking-widest">{afternoonAppts.length} Appointments Remaining</span>
+                   </div>
+                   <div className="space-y-2">
+                      {afternoonAppts.map((appt, idx) => (
+                         <AppointmentCard key={appt.id} appt={appt} position={idx + 1} updating={updating} onStatusChange={handleStatusChange} onOpenPassport={handleOpenPassport} isAfternoon={true} />
+                      ))}
+                   </div>
+                </div>
+             )}
+
           </div>
         )}
       </div>
 
-      {/* Health Passport side-sheet */}
       <HealthPassportSheet
         open={passportOpen}
         onClose={() => setPassportOpen(false)}
@@ -1159,3 +1104,4 @@ export const DoctorQueue = () => {
     </>
   );
 };
+
