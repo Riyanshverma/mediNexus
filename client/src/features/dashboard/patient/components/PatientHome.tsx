@@ -37,7 +37,9 @@ export const PatientHome = ({ setActiveTab }: { setActiveTab?: (tab: string) => 
   useAppointmentRefresh(fetchUpcoming);
 
   return (
-    <div className="p-8 animate-in fade-in duration-700 w-[calc(100%-2rem)] max-w-7xl mx-auto pb-32">
+    <div className="relative p-8 animate-in fade-in duration-700 w-[calc(100%-2rem)] max-w-7xl mx-auto pb-32 overflow-hidden">
+      {/* ── Top-Right Gradient Glow ── */}
+      <div className="absolute -top-24 -right-24 w-96 h-96 bg-primary/20 blur-[120px] rounded-full pointer-events-none -z-10" />
       
       {/* ── Welcome & System Status ── */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 mb-12">
