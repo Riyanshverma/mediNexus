@@ -277,8 +277,16 @@ const PatientDiscover = () => {
     const date = slotDate || format(new Date(), 'yyyy-MM-dd');
     setSlotsLoading(true);
     try {
-      const res = await patientService.getDoctorSlots(doc.id, date);
-      setSlots((res as any).data?.slots ?? []);
+      const [resSlots, resWL] = await Promise.all([
+        patientService.getDoctorSlots(doc.id, date),
+        patientService.listWaitlist().catch(() => ({ data: { waitlist: [] } }))
+      ]);
+      setSlots((resSlots as any).data?.slots ?? []);
+      
+      const wl = (resWL as any).data?.waitlist ?? [];
+      const wlSet = new Set<string>();
+      wl.forEach((w: any) => wlSet.add(w.slot_id));
+      setWaitlistedSlotIds(wlSet);
     } catch {
       toast.error('Failed to load slots');
     } finally {
@@ -292,8 +300,16 @@ const PatientDiscover = () => {
     setSelectedSlot(null);
     setStreamConnected(false);
     try {
-      const res = await patientService.getDoctorSlots(selectedDoctor.id, date);
-      setSlots((res as any).data?.slots ?? []);
+      const [resSlots, resWL] = await Promise.all([
+        patientService.getDoctorSlots(selectedDoctor.id, date),
+        patientService.listWaitlist().catch(() => ({ data: { waitlist: [] } }))
+      ]);
+      setSlots((resSlots as any).data?.slots ?? []);
+      
+      const wl = (resWL as any).data?.waitlist ?? [];
+      const wlSet = new Set<string>();
+      wl.forEach((w: any) => wlSet.add(w.slot_id));
+      setWaitlistedSlotIds(wlSet);
     } catch {
       toast.error('Failed to load slots');
     } finally {

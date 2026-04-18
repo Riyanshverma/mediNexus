@@ -89,6 +89,29 @@ export async function notifyNextWaiting(slotId: string): Promise<number> {
     },
   });
 
+  // Also notify via WhatsApp if the patient has a registered phone number.
+  try {
+    const { sendWhatsAppText } = await import('../controllers/whatsapp/whatsapp.controller.js');
+    const { msg } = await import('../controllers/whatsapp/strings.js');
+
+    const { data: patient } = await supabaseAdmin
+      .from('patients')
+      .select('phone_number, language_preference')
+      .eq('id', updated.patient_id)
+      .single();
+
+    if (patient?.phone_number) {
+      const lang = patient.language_preference === 'hi' ? 'hi' : 'en';
+      const text = msg(lang, "waitlist_freed_notify" as any);
+      // Fire-and-forget
+      sendWhatsAppText(patient.phone_number, text).catch(e => {
+        console.error(`[waitlistQueue] WhatsApp notification failed for ${patient.phone_number}:`, e.message);
+      });
+    }
+  } catch (err: any) {
+    console.error(`[waitlistQueue] Could not trigger WhatsApp notification:`, err?.message);
+  }
+
   return 1;
 }
 

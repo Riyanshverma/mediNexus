@@ -17,6 +17,9 @@ interface EnvConfig {
   FRONTEND_URL: string;
   FRONTEND_URLS: string[];
   DATABASE_URL: string | undefined;
+  TWILIO_ACCOUNT_SID: string;
+  TWILIO_AUTH_TOKEN: string;
+  TWILIO_WHATSAPP_FROM: string;
 }
 
 function getEnvVar(key: string, fallback?: string): string {
@@ -54,4 +57,7 @@ export const env: EnvConfig = {
   FRONTEND_URL: getEnvVar('FRONTEND_URL', 'http://localhost:5173'),
   FRONTEND_URLS: parseCsvEnvVar('FRONTEND_URLS'),
   DATABASE_URL: getOptionalEnvVar('DATABASE_URL'),
+  TWILIO_ACCOUNT_SID: getEnvVar('TWILIO_ACCOUNT_SID', 'placeholder_sid'),
+  TWILIO_AUTH_TOKEN: getEnvVar('TWILIO_AUTH_TOKEN', 'placeholder_token'),
+  TWILIO_WHATSAPP_FROM: getEnvVar('TWILIO_WHATSAPP_FROM', 'whatsapp:+14155238886'),
 };
