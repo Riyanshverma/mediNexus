@@ -10,6 +10,9 @@ interface EnvConfig {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
   SUPABASE_ANON_KEY: string;
+  OPENROUTER_API_KEY: string;
+  SARVAM_API_KEY: string;
+  HF_TOKEN: string;
   FRONTEND_URL: string;
   DATABASE_URL: string | undefined;
 }
@@ -27,11 +30,14 @@ function getOptionalEnvVar(key: string): string | undefined {
 }
 
 export const env: EnvConfig = {
-  PORT: parseInt(getEnvVar('PORT', '5000'), 10),
+  PORT: parseInt(getEnvVar('PORT', '3000'), 10),
   NODE_ENV: getEnvVar('NODE_ENV', 'development'),
   SUPABASE_URL: getEnvVar('SUPABASE_URL'),
   SUPABASE_SERVICE_ROLE_KEY: getEnvVar('SUPABASE_SERVICE_ROLE_KEY'),
   SUPABASE_ANON_KEY: getEnvVar('SUPABASE_ANON_KEY'),
+  OPENROUTER_API_KEY: getEnvVar('OPENROUTER_API_KEY'),
+  SARVAM_API_KEY: getEnvVar('SARVAM_API_KEY'),
+  HF_TOKEN: getEnvVar('HF_TOKEN'),
   FRONTEND_URL: getEnvVar('FRONTEND_URL', 'http://localhost:5173'),
   DATABASE_URL: getOptionalEnvVar('DATABASE_URL'),
 };

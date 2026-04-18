@@ -11,10 +11,21 @@ import {
   BadRequestError,
   NotFoundError,
 } from "../../utils/errors.js";
+import { env } from "../../config/env.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Lang = "en" | "hi";
+
+/**
+ * The document_type sent in the request body.
+ * Image modalities: xray | mri | ecg | ct
+ * Text-based:       report | default
+ */
+type DocumentType = "xray" | "mri" | "ecg" | "ct" | "report" | "default";
+
+/** The set of document types that are image-based and require vision AI. */
+const IMAGE_MODALITIES = new Set<DocumentType>(["xray", "mri", "ecg", "ct"]);
 
 // ─── In-memory cache ─────────────────────────────────────────────────────────
 
@@ -24,9 +35,106 @@ interface CacheEntry {
   audioMime: string;
 }
 
-/** Cache key includes language so EN and HI results are stored separately. */
+/** Cache key includes language & document type so results are stored separately. */
 const reportCache = new Map<string, CacheEntry>();
-const cacheKey = (reportId: string, lang: Lang) => `${reportId}:${lang}`;
+const cacheKey = (reportId: string, lang: Lang, docType: DocumentType) =>
+  `${reportId}:${lang}:${docType}`;
+
+// ─── System prompts (English) per document type ───────────────────────────────
+
+const SYSTEM_PROMPTS_EN: Record<DocumentType, string> = {
+  xray:
+    "You are a radiology assistant. A patient has uploaded a chest X-ray and wants to understand what it shows. " +
+    "Analyse the image and describe the key findings in simple, patient-friendly language. " +
+    "Mention any visible abnormalities (e.g. consolidation, effusion, cardiomegaly, fractures), note normal-looking areas, " +
+    "and tell the patient what they should discuss with their doctor. " +
+    "Do NOT make definitive diagnoses. Plain prose only — no bullet points, no asterisks, no markdown. " +
+    'Speak directly to the patient using "your". Keep the response under 350 words.',
+
+  mri:
+    "You are a medical imaging assistant. A patient has uploaded an MRI scan. " +
+    "Describe what is visible in simple language a patient can understand. " +
+    "Note any areas that appear unusual and what they might suggest, without making a definitive diagnosis. " +
+    "Tell the patient what they should bring up with their doctor. " +
+    "Plain prose only — no bullet points, no asterisks, no markdown. " +
+    'Speak directly to the patient using "your". Keep the response under 350 words.',
+
+  ecg:
+    "You are a cardiac assistant. A patient has uploaded an ECG/EKG. " +
+    "Analyse the heart rhythm and describe any notable patterns in simple language. " +
+    "Mention the heart rate if you can estimate it and flag any findings the patient should discuss with their doctor. " +
+    "Do NOT make definitive diagnoses. Plain prose only — no bullet points, no asterisks, no markdown. " +
+    'Speak directly to the patient using "your". Keep the response under 350 words.',
+
+  ct:
+    "You are a radiology assistant. A patient has uploaded a CT scan. " +
+    "Describe the findings visible in the image in patient-friendly language. " +
+    "Note any areas that appear abnormal and what follow-up may be needed, without making a definitive diagnosis. " +
+    "Plain prose only — no bullet points, no asterisks, no markdown. " +
+    'Speak directly to the patient using "your". Keep the response under 350 words.',
+
+  report:
+    "You are an expert medical analyst. A patient has uploaded a medical report and wants to understand the most important takeaways. " +
+    "Your job is NOT to read or repeat the report — your job is to ANALYSE it and surface what actually matters. " +
+    "First, identify the type and purpose of the report in one sentence. " +
+    "Second, highlight ONLY the clinically significant findings — abnormal values, confirmed diagnoses, critical markers, or anything that deviates from normal ranges. Skip all normal or unremarkable results entirely. " +
+    "Third, flag anything the patient should act on: follow-up tests, lifestyle changes, medications mentioned, or results that need a doctor's attention. " +
+    "Fourth, close with a single plain-language bottom line the patient can remember. " +
+    "Plain prose only — no bullet points, no asterisks, no markdown, no numbering. " +
+    'Speak directly to the patient using "your". Keep the total response under 350 words. ' +
+    "If a value is abnormal, say whether it is high or low and briefly explain what that generally means in simple terms.",
+
+  default:
+    "You are a medical assistant. Analyse this medical document or image and provide a clear, patient-friendly summary of the key information. " +
+    "Highlight any findings that the patient should be aware of and what they should discuss with their doctor. " +
+    "Plain prose only — no bullet points, no asterisks, no markdown. " +
+    'Speak directly to the patient using "your". Keep the response under 350 words.',
+};
+
+// ─── System prompts (Hinglish) per document type ──────────────────────────────
+
+const SYSTEM_PROMPTS_HI: Record<DocumentType, string> = {
+  xray:
+    "You are a radiology assistant explaining a chest X-ray in simple Hinglish — a natural mix of Hindi and English the way educated Indians speak daily. " +
+    "Describe what the X-ray shows, mention any visible abnormalities in simple language, and tell the patient what to discuss with their doctor. " +
+    "Do NOT make definitive diagnoses. Plain conversational prose only — no bullet points, no asterisks, no markdown. " +
+    'Patient se directly "aap / aapka / aapki" use karke baat karo. Total response 350 words se kam rakho.',
+
+  mri:
+    "You are a medical imaging assistant explaining an MRI in simple Hinglish — a natural mix of Hindi and English the way educated Indians speak daily. " +
+    "Describe what the MRI shows, highlight any areas that look unusual, and tell the patient what to ask their doctor. " +
+    "Do NOT make definitive diagnoses. Plain conversational prose only — no bullet points, no asterisks, no markdown. " +
+    'Patient se directly "aap / aapka / aapki" use karke baat karo. Total response 350 words se kam rakho.',
+
+  ecg:
+    "You are a cardiac assistant explaining an ECG/EKG in simple Hinglish — a natural mix of Hindi and English the way educated Indians speak daily. " +
+    "Describe the heart rhythm, estimate heart rate if visible, and flag anything the patient should discuss with their doctor. " +
+    "Do NOT make definitive diagnoses. Plain conversational prose only — no bullet points, no asterisks, no markdown. " +
+    'Patient se directly "aap / aapka / aapki" use karke baat karo. Total response 350 words se kam rakho.',
+
+  ct:
+    "You are a radiology assistant explaining a CT scan in simple Hinglish — a natural mix of Hindi and English the way educated Indians speak daily. " +
+    "Describe what the CT shows, note any abnormal areas, and tell the patient what follow-up might be needed. " +
+    "Do NOT make definitive diagnoses. Plain conversational prose only — no bullet points, no asterisks, no markdown. " +
+    'Patient se directly "aap / aapka / aapki" use karke baat karo. Total response 350 words se kam rakho.',
+
+  report:
+    "You are a friendly medical expert explaining a patient's report in simple Hinglish — a natural mix of Hindi and English the way educated Indians actually speak in daily life. " +
+    "Your job is NOT to read the report — ANALYSE it and tell the patient only what truly matters. " +
+    "CRITICAL LANGUAGE RULES: Write in conversational Hinglish. Use short, easy Hindi words mixed freely with common English medical terms. " +
+    'Never use formal or literary Hindi words that people don\'t use in everyday speech (avoid words like "नैदानिक", "अनुवर्ती", "संकेतक" — instead say things like "important finding hai", "follow-up karna hoga", "dhyan dena hoga"). ' +
+    "ABBREVIATION RULE: Never say any abbreviation or short form. Always say the full name (e.g. never say CBC — say Complete Blood Count; never say BP — say Blood Pressure). " +
+    "First, one sentence mein batao ki yeh kaun si report hai. " +
+    "Second, sirf woh findings batao jo abnormal hain — normal results skip karo. Agar koi value high ya low hai toh clearly batao aur simple mein samjhao. " +
+    "Third, batao patient ko ab kya karna chahiye — follow-up test, doctor se milna, lifestyle change, ya koi dawai. " +
+    "Fourth, ek simple bottom line do jo patient yaad rakh sake. " +
+    'Plain conversational prose only — no bullet points, no asterisks, no markdown. Patient se directly "aap / aapka / aapki" use karke baat karo. Total 350 words se kam rakho.',
+
+  default:
+    "You are a medical assistant explaining a medical document in simple Hinglish — a natural mix of Hindi and English the way educated Indians speak daily. " +
+    "Provide a clear, patient-friendly summary of the key findings and what the patient should discuss with their doctor. " +
+    'Plain conversational prose only — no bullet points, no asterisks, no markdown. Patient se directly "aap / aapka / aapki" use karke baat karo. Total response 350 words se kam rakho.',
+};
 
 // ─── PDF text extraction ──────────────────────────────────────────────────────
 
@@ -41,65 +149,84 @@ async function extractTextFromPDF(reportUrl: string): Promise<string> {
   const arrayBuf = await res.arrayBuffer();
   const buffer = Buffer.from(arrayBuf);
   const parsed = await pdfParse(buffer);
-  const text = parsed.text?.trim() ?? "";
-  if (!text) {
-    throw new AppError(
-      "Could not extract any text from the PDF. The file may be a scanned image without selectable text.",
-      422,
-    );
-  }
-  return text;
+  return parsed.text?.trim() ?? "";
 }
 
-// ─── OpenRouter analysis ──────────────────────────────────────────────────────
+// ─── Image modality analyser — Gemma 3 27B via OpenRouter ────────────────────
+// Handles: xray | mri | ecg | ct
+// Passes the image URL directly (no base64 conversion needed).
 
-async function analyseReport(
-  extractedText: string,
-  reportName: string,
+async function analyseImageWithGemma(
+  imageUrl: string,
+  docType: DocumentType,
   lang: Lang,
 ): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new AppError("OpenRouter API key not configured", 503);
+  const apiKey = env.OPENROUTER_API_KEY.trim();
+  const systemPrompt =
+    lang === "hi" ? SYSTEM_PROMPTS_HI[docType] : SYSTEM_PROMPTS_EN[docType];
 
-  // Truncate to stay within token limits (~6000 chars ≈ ~1500 tokens)
+  console.log(`[reportSpeak] Calling Gemma 3 27B for image modality (${docType})`);
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://medinexus.app",
+      "X-Title": "mediNexus Report Audio Analysis",
+    },
+    body: JSON.stringify({
+      model: "google/gemma-3-27b-it:free",
+      messages: [
+        {
+          role: "user" as const,
+          content: [
+            {
+              type: "text",
+              text: systemPrompt,
+            },
+            {
+              type: "image_url",
+              image_url: { url: imageUrl },
+            },
+          ],
+        },
+      ],
+      max_tokens: 600,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("[reportSpeak] Gemma 3 27B (vision) error:", errText);
+    throw new AppError("Image analysis service returned an error", 502);
+  }
+
+  const data = (await res.json()) as any;
+  const reply: string =
+    data?.choices?.[0]?.message?.content?.trim() ??
+    "Analysis could not be generated. Please try again.";
+  console.log("[reportSpeak] Gemma 3 27B reply:", reply.slice(0, 120), "...");
+  return reply;
+}
+
+// ─── Text-based report analyser — Trinity via OpenRouter ─────────────────────
+// Handles: report | default (PDF with extractable text)
+
+async function analyseTextWithTrinity(
+  extractedText: string,
+  reportName: string,
+  docType: DocumentType,
+  lang: Lang,
+): Promise<string> {
+  const apiKey = env.OPENROUTER_API_KEY.trim();
+  const systemPrompt =
+    lang === "hi" ? SYSTEM_PROMPTS_HI[docType] : SYSTEM_PROMPTS_EN[docType];
+
+  // Truncate to stay within token limits (~6 000 chars ≈ ~1 500 tokens)
   const truncated = extractedText.slice(0, 6000);
 
-  const systemPromptEn =
-    "You are an expert medical analyst. A patient has uploaded a medical report and wants to understand the most important takeaways. " +
-    "Your job is NOT to read or repeat the report — your job is to ANALYSE it and surface what actually matters. " +
-    "Do the following: " +
-    "First, identify the type and purpose of the report in one sentence. " +
-    "Second, highlight ONLY the clinically significant findings — abnormal values, confirmed diagnoses, critical markers, or anything that deviates from normal ranges. Skip all normal or unremarkable results entirely. " +
-    "Third, flag anything the patient should act on: follow-up tests, lifestyle changes, medications mentioned, or results that need a doctor's attention. " +
-    "Fourth, close with a single plain-language bottom line the patient can remember. " +
-    "Rules: plain prose only — no bullet points, no asterisks, no markdown, no numbering. " +
-    'Speak directly to the patient using "your". Keep the total response under 350 words. ' +
-    "If a value is abnormal, say whether it is high or low and briefly explain what that generally means in simple terms.";
-
-  const systemPromptHi =
-    "You are a friendly medical expert explaining a patient's report in simple Hinglish — a natural mix of Hindi and English the way educated Indians actually speak in daily life. " +
-    "Your job is NOT to read the report — ANALYSE it and tell the patient only what truly matters. " +
-    "CRITICAL LANGUAGE RULES: " +
-    'Write in conversational Hinglish. Use short, easy Hindi words mixed freely with common English medical terms. Never use formal or literary Hindi words that people don\'t use in everyday speech (for example, avoid words like "nैदानिक", "अनुवर्ती", "संकेतक", "उल्लेखनीय" — instead say things like "important finding hai", "follow-up karna hoga", "dhyan dena hoga"). ' +
-    'ABBREVIATION RULE: Never say any abbreviation or short form. Always say the full name. For example: never say "CBC" — say "Complete Blood Count"; never say "BP" — say "Blood Pressure"; never say "RBC" — say "Red Blood Cells"; never say "WBC" — say "White Blood Cells"; never say "Hb" — say "Haemoglobin"; never say "FBS" — say "Fasting Blood Sugar"; never say "TSH" — say "Thyroid Stimulating Hormone"; and so on for every abbreviation in the report. ' +
-    "Do the following: " +
-    "First, one sentence mein batao ki yeh kaun si report hai aur kyun ki gayi thi. " +
-    "Second, sirf woh findings batao jo abnormal hain ya dhyan dene layak hain — normal results skip karo. Agar koi value high ya low hai toh clearly batao aur simple language mein samjhao ki iska kya matlab hota hai. " +
-    "Third, batao patient ko ab kya karna chahiye — koi follow-up test, doctor se milna, koi lifestyle change, ya koi dawai jo mention ki gayi ho. " +
-    "Fourth, ek simple bottom line do jo patient yaad rakh sake. " +
-    "Rules: plain conversational prose only — no bullet points, no asterisks, no markdown, no numbering. " +
-    'Patient se directly "aapka / aapki / aap" use karke baat karo. Total response 350 words se kam rakho.';
-
-  const messages = [
-    {
-      role: "system" as const,
-      content: lang === "hi" ? systemPromptHi : systemPromptEn,
-    },
-    {
-      role: "user" as const,
-      content: `Report name: ${reportName}\n\nFull report content:\n${truncated}`,
-    },
-  ];
+  console.log(`[reportSpeak] Calling Trinity for text-based report (${docType})`);
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -111,8 +238,13 @@ async function analyseReport(
     },
     body: JSON.stringify({
       model: "arcee-ai/trinity-large-preview:free",
-      messages,
-      reasoning: { enabled: true },
+      messages: [
+        { role: "system" as const, content: systemPrompt },
+        {
+          role: "user" as const,
+          content: `Report name: ${reportName}\n\nFull report content:\n${truncated}`,
+        },
+      ],
       temperature: 0.3,
       max_tokens: 600,
     }),
@@ -120,7 +252,7 @@ async function analyseReport(
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error("[reportSpeak] OpenRouter error:", errText);
+    console.error("[reportSpeak] Trinity error:", errText);
     throw new AppError("AI analysis service returned an error", 502);
   }
 
@@ -128,8 +260,39 @@ async function analyseReport(
   const reply: string =
     data?.choices?.[0]?.message?.content?.trim() ??
     "Analysis could not be generated. Please try again.";
+  console.log("[reportSpeak] Trinity reply:", reply.slice(0, 120), "...");
   return reply;
 }
+
+// ─── Unified analysis dispatcher ──────────────────────────────────────────────
+
+async function analyseReport(
+  reportUrl: string,
+  reportName: string,
+  docType: DocumentType,
+  lang: Lang,
+): Promise<string> {
+  if (IMAGE_MODALITIES.has(docType)) {
+    // ── Image modality: Gemma 3 27B vision (URL passed directly) ─────
+    return analyseImageWithGemma(reportUrl, docType, lang);
+  } else {
+    // ── Text-based report: extract PDF text → Trinity ─────────────────
+    console.log(`[reportSpeak] Text-based report (${docType}) — extracting PDF text`);
+    const extractedText = await extractTextFromPDF(reportUrl);
+
+    if (extractedText.length > 0) {
+      console.log(`[reportSpeak] Extracted ${extractedText.length} chars — sending to Trinity`);
+      return analyseTextWithTrinity(extractedText, reportName, docType, lang);
+    }
+
+    // No text found (scanned / image-only PDF) — use Gemma vision as fallback
+    console.warn(
+      "[reportSpeak] No extractable text in PDF, falling back to Gemma 3 27B vision",
+    );
+    return analyseImageWithGemma(reportUrl, docType, lang);
+  }
+}
+
 
 // ─── Sarvam Bulbul v3 TTS ─────────────────────────────────────────────────────
 
@@ -137,8 +300,7 @@ async function textToSpeech(
   analysisText: string,
   lang: Lang,
 ): Promise<{ audioBase64: string; audioMime: string }> {
-  const apiKey = process.env.SARVAM_API_KEY;
-  if (!apiKey) throw new AppError("Sarvam API key not configured", 503);
+  const apiKey = env.SARVAM_API_KEY.trim();
 
   const res = await fetch("https://api.sarvam.ai/text-to-speech/stream", {
     method: "POST",
@@ -181,9 +343,7 @@ async function textToSpeech(
   }
 
   const contentType = res.headers.get("content-type")?.split(";")[0]?.trim();
-  const audioMime = contentType?.startsWith("audio/")
-    ? contentType
-    : "audio/mpeg";
+  const audioMime = contentType?.startsWith("audio/") ? contentType : "audio/mpeg";
 
   return { audioBase64: audioBuffer.toString("base64"), audioMime };
 }
@@ -208,8 +368,17 @@ export async function reportSpeak(
     const rawLang = req.body?.lang;
     const lang: Lang = rawLang === "hi" ? "hi" : "en";
 
+    const rawDocType = req.body?.document_type as string | undefined;
+    const validDocTypes: DocumentType[] = ["xray", "mri", "ecg", "ct", "report", "default"];
+    const docType: DocumentType =
+      rawDocType && validDocTypes.includes(rawDocType as DocumentType) ? (rawDocType as DocumentType)
+        : "default"; // !Change this in frontend
+
+    console.log("The doc type is ", docType);
+        
+
     // ── 1. Cache check ──────────────────────────────────────────────────
-    const key = cacheKey(reportId, lang);
+    const key = cacheKey(reportId, lang, docType);
     const cached = reportCache.get(key);
     if (cached) {
       sendSuccess(
@@ -238,30 +407,27 @@ export async function reportSpeak(
     if (!report.report_url)
       throw new BadRequestError("Report has no associated file URL");
 
-    // ── 3. Extract text from PDF ────────────────────────────────────────
+    // ── 3. Analyse ──────────────────────────────────────────────────────
     console.log(
-      `[reportSpeak] Extracting text from PDF for report ${reportId}`,
-    );
-    const extractedText = await extractTextFromPDF(report.report_url);
-    console.log(`[reportSpeak] Extracted ${extractedText.length} chars`);
-
-    // ── 4. AI analysis ──────────────────────────────────────────────────
-    console.log(
-      `[reportSpeak] Running AI analysis for report ${reportId} (lang=${lang})`,
+      `[reportSpeak] Analysing report ${reportId} (type=${docType}, lang=${lang})`,
     );
     const analysisText = await analyseReport(
-      extractedText,
+      report.report_url,
       report.report_name,
+      docType,
       lang,
     );
+    console.log(
+      `[reportSpeak] Analysis complete (${analysisText.length} chars)`,
+    );
 
-    // ── 5. TTS ──────────────────────────────────────────────────────────
+    // ── 4. TTS ──────────────────────────────────────────────────────────
     console.log(
       `[reportSpeak] Generating TTS for report ${reportId} (lang=${lang})`,
     );
     const { audioBase64, audioMime } = await textToSpeech(analysisText, lang);
 
-    // ── 6. Cache & respond ──────────────────────────────────────────────
+    // ── 5. Cache & respond ──────────────────────────────────────────────
     reportCache.set(key, { analysisText, audioBase64, audioMime });
     sendSuccess(
       res,
