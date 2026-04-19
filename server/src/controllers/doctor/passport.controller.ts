@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, ForbiddenError, NotFoundError } from '../../utils/errors.js';
 import { requireDoctor } from '../../utils/lookup.js';
+import { logPatientDataAccess } from '../../utils/privacyAudit.js';
 
 /**
  * GET /api/doctors/me/patients/:patientId/passport
@@ -154,6 +155,23 @@ export async function getPatientPassportForDoctor(
         .order('uploaded_at', { ascending: false });
       reports = data ?? [];
     }
+
+    await logPatientDataAccess({
+      patientId,
+      actorUserId: userId,
+      actorRole: 'doctor',
+      actorLabel: doctor.full_name,
+      action: 'read',
+      resourceType: 'patient_passport',
+      resourceId: patientId,
+      purpose: 'clinical_treatment',
+      metadata: {
+        prescriptions_returned: prescriptions.length,
+        reports_returned: reports.length,
+        record_count: prescriptions.length + reports.length,
+      },
+      ipAddress: req.ip,
+    });
 
     sendSuccess(
       res,

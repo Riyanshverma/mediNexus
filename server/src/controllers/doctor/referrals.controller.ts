@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors.js';
 import { requireDoctor } from '../../utils/lookup.js';
+import { logPatientDataAccess } from '../../utils/privacyAudit.js';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -390,6 +391,23 @@ export async function getAccessibleDocuments(
 
     // Combine own + granted prescription IDs
     const allPrescriptionIds = [...new Set([...ownPrescriptionIds, ...grantedPrescriptionIds])];
+
+    await logPatientDataAccess({
+      patientId,
+      actorUserId: userId,
+      actorRole: 'doctor',
+      actorLabel: doctor.full_name,
+      action: 'read',
+      resourceType: 'accessible_documents',
+      resourceId: patientId,
+      purpose: 'referral_preparation',
+      metadata: {
+        prescription_count: allPrescriptionIds.length,
+        report_count: grantedReportIds.length,
+        record_count: allPrescriptionIds.length + grantedReportIds.length,
+      },
+      ipAddress: req.ip,
+    });
 
     sendSuccess(res, {
       accessible_prescription_ids: allPrescriptionIds,

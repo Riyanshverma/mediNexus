@@ -17,6 +17,14 @@ A healthcare platform for patients, doctors, and hospital admins. Built with Rea
 
 ---
 
+## Security & Best Practices
+
+- **DPDP Act compliance + consent flows**
+- **MFA + RBAC**
+- **Encryption at rest & in transit**
+- **Audit logging**
+- **CERT-In breach reporting readiness**
+
 ## Features
 
 ### Patient

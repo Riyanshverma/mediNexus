@@ -716,13 +716,12 @@ export const PatientHealthPassport = () => {
                     </div>
                   </div>
 
-                  {/* Sub Navigation */}
-                  <div className="flex items-center gap-8 border-b border-border mb-8 overflow-x-auto pb-[-1px]">
-                    <button className="text-sm font-bold text-primary border-b-2 border-primary pb-3 px-1">Access Granted</button>
-                    <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">Revoked Access</button>
-                    <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">Activity Logs</button>
-                    <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">API Keys</button>
-                  </div>
+                {/* Sub Navigation */}
+                <div className="flex items-center gap-8 border-b border-border mb-8 overflow-x-auto pb-[-1px]">
+                  <button className="text-sm font-bold text-primary border-b-2 border-primary pb-3 px-1">Access Granted</button>
+                  <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">Revoked Access</button>
+                  <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">Activity Logs</button>
+                </div>
 
                   {groupedGrants.length === 0 ? (
                     <div className="bg-card rounded-[24px] border border-border p-12 text-center text-muted-foreground flex flex-col items-center justify-center h-full">

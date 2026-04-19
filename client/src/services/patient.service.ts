@@ -160,6 +160,37 @@ export interface DocumentSelection {
   document_id: string;
 }
 
+export interface PatientAccessLogItem {
+  id: string;
+  actor_user_id: string | null;
+  actor_role: 'patient' | 'doctor' | 'hospital_admin' | 'system' | string;
+  actor_label: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  purpose: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PatientAccessAlert {
+  id: string;
+  alert_type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface PatientAccessAlertPreferences {
+  enabled: boolean;
+  first_time_provider_access: boolean;
+  unusual_hour_access: boolean;
+  bulk_record_access: boolean;
+  updated_at: string | null;
+}
+
 export interface AIChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -245,8 +276,37 @@ export const patientService = {
     documents: DocumentSelection[];
     valid_days?: number;
     source?: 'manual' | 'booking' | 'referral';
+    verification_token?: string;
   }) =>
     api.post<{ data: { grants: AccessGrant[] } }>('/api/patients/me/grants', payload),
+
+  initiateBookingGrantOtp: (payload: {
+    granted_to_doctor_id: string;
+    documents: DocumentSelection[];
+    valid_days?: number;
+    source?: 'booking';
+  }) =>
+    api.post<{
+      data: {
+        challenge_id: string;
+        expires_at: string;
+        retry_after_seconds: number;
+      };
+    }>('/api/patients/me/grants/booking/otp/initiate', payload),
+
+  verifyBookingGrantOtp: (payload: {
+    granted_to_doctor_id: string;
+    documents: DocumentSelection[];
+    valid_days?: number;
+    source?: 'booking';
+    otp_code: string;
+  }) =>
+    api.post<{
+      data: {
+        verification_token: string;
+        expires_at: string;
+      };
+    }>('/api/patients/me/grants/booking/otp/verify', payload),
 
   revokeGrant: (grantId: string) =>
     api.delete<{ data: null }>(`/api/patients/me/grants/${grantId}`),
@@ -316,6 +376,58 @@ export const patientService = {
   // AI Health Assistant
   aiChat: (payload: { message: string; history: AIChatMessage[] }) =>
     api.post<{ data: { reply: string } }>('/api/patients/me/ai-chat', payload),
+
+  // Privacy center
+  getDataAccessLog: (params: {
+    limit?: number;
+    offset?: number;
+    action?: string;
+    actor_role?: string;
+  } = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+
+    return api.get<{
+      data: {
+        logs: PatientAccessLogItem[];
+        pagination: { limit: number; offset: number; total: number };
+      };
+    }>(`/api/patients/me/privacy/access-log${qs ? `?${qs}` : ''}`);
+  },
+
+  getAccessAlerts: (params: { limit?: number; offset?: number; unread_only?: boolean } = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => [k, String(v)])
+    ).toString();
+
+    return api.get<{
+      data: {
+        alerts: PatientAccessAlert[];
+        pagination: { limit: number; offset: number; total: number };
+      };
+    }>(`/api/patients/me/privacy/alerts${qs ? `?${qs}` : ''}`);
+  },
+
+  markAccessAlertRead: (alertId: string) =>
+    api.patch<{ data: { alert: { id: string; is_read: boolean; read_at: string | null } } }>(
+      `/api/patients/me/privacy/alerts/${alertId}/read`
+    ),
+
+  getAccessAlertPreferences: () =>
+    api.get<{ data: { preferences: PatientAccessAlertPreferences } }>(
+      '/api/patients/me/privacy/alert-preferences'
+    ),
+
+  updateAccessAlertPreferences: (payload: Partial<Omit<PatientAccessAlertPreferences, 'updated_at'>>) =>
+    api.patch<{ data: { preferences: PatientAccessAlertPreferences } }>(
+      '/api/patients/me/privacy/alert-preferences',
+      payload
+    ),
 
   // Report Audio Analysis
   speakReport: (reportId: string, lang: 'en' | 'hi' = 'en') =>

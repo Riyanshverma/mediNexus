@@ -32,7 +32,16 @@ import {
   createAccessGrant,
   revokeAccessGrant,
   revokeAllGrantsForDoctor,
+  initiateBookingGrantOtp,
+  verifyBookingGrantOtp,
 } from '../controllers/patient/grants.controller.js';
+import {
+  getPatientDataAccessLog,
+  listPatientAccessAlerts,
+  markPatientAccessAlertRead,
+  getPatientAccessAlertPreferences,
+  updatePatientAccessAlertPreferences,
+} from '../controllers/patient/privacy.controller.js';
 import { streamPatientWaitlist } from '../controllers/sse/waitlist.controller.js';
 import { patientAIChat } from '../controllers/patient/aiChat.controller.js';
 
@@ -80,9 +89,18 @@ patientRouter.get('/me/passport', getPatientPassport);
 
 // ── Record Access Grants ──────────────────────────────────────────────
 patientRouter.get('/me/grants', listAccessGrants);
+patientRouter.post('/me/grants/booking/otp/initiate', initiateBookingGrantOtp);
+patientRouter.post('/me/grants/booking/otp/verify', verifyBookingGrantOtp);
 patientRouter.post('/me/grants', createAccessGrant);
 patientRouter.delete('/me/grants/doctor/:doctorId', revokeAllGrantsForDoctor);
 patientRouter.delete('/me/grants/:grantId', revokeAccessGrant);
+
+// ── Privacy Activity & Alerts ──────────────────────────────────────────
+patientRouter.get('/me/privacy/access-log', getPatientDataAccessLog);
+patientRouter.get('/me/privacy/alerts', listPatientAccessAlerts);
+patientRouter.patch('/me/privacy/alerts/:alertId/read', markPatientAccessAlertRead);
+patientRouter.get('/me/privacy/alert-preferences', getPatientAccessAlertPreferences);
+patientRouter.patch('/me/privacy/alert-preferences', updatePatientAccessAlertPreferences);
 
 // ── AI Health Assistant ───────────────────────────────────────────────
 patientRouter.post('/me/ai-chat', patientAIChat);

@@ -207,10 +207,17 @@ export const doctorService = {
     ),
 
   // Slots
-  listSlots: (upcoming = true) =>
-    api.get<{ data: { slots: DoctorSlot[] } }>(
-      `/api/doctors/me/slots?upcoming=${upcoming}`
-    ),
+  listSlots: (opts?: boolean | { upcoming?: boolean; date?: string }) => {
+    const upcoming = typeof opts === 'boolean' ? opts : opts?.upcoming ?? true;
+    const date = typeof opts === 'boolean' ? undefined : opts?.date;
+    const params = new URLSearchParams();
+    params.set('upcoming', String(upcoming));
+    if (date) params.set('date', date);
+
+    return api.get<{ data: { slots: DoctorSlot[] } }>(
+      `/api/doctors/me/slots?${params.toString()}`
+    );
+  },
 
   generateSlots: (payload: {
     working_days: number[];

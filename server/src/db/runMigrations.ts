@@ -110,6 +110,95 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       $$;
     `,
   },
+  {
+    id: '008_patient_grant_otp',
+    sql: `
+      CREATE TABLE IF NOT EXISTS patient_grant_otp_challenges (
+        id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id         UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+        phone_number       TEXT NOT NULL,
+        intent_hash        TEXT NOT NULL,
+        otp_hash           TEXT NOT NULL,
+        verification_token UUID,
+        channel            TEXT NOT NULL DEFAULT 'whatsapp',
+        status             TEXT NOT NULL DEFAULT 'sent',
+        attempt_count      INT NOT NULL DEFAULT 0,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_sent_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at         TIMESTAMPTZ NOT NULL,
+        verified_at        TIMESTAMPTZ,
+        consumed_at        TIMESTAMPTZ,
+        CONSTRAINT patient_grant_otp_status_check
+          CHECK (status IN ('sent', 'verified', 'consumed', 'expired', 'locked'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_patient_grant_otp_patient
+        ON patient_grant_otp_challenges(patient_id, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_patient_grant_otp_intent
+        ON patient_grant_otp_challenges(patient_id, intent_hash, created_at DESC);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_patient_grant_otp_verification_token
+        ON patient_grant_otp_challenges(verification_token)
+        WHERE verification_token IS NOT NULL;
+
+      ALTER TABLE patient_grant_otp_challenges ENABLE ROW LEVEL SECURITY;
+    `,
+  },
+  {
+    id: '009_privacy_access_audit',
+    sql: `
+      CREATE TABLE IF NOT EXISTS data_access_audit_log (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+        actor_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+        actor_role TEXT NOT NULL,
+        actor_label TEXT,
+        action TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id UUID,
+        purpose TEXT,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        ip_address INET,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_data_access_audit_patient_time
+        ON data_access_audit_log(patient_id, created_at DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_data_access_audit_actor
+        ON data_access_audit_log(actor_user_id, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS patient_access_alert_preferences (
+        patient_id UUID PRIMARY KEY REFERENCES patients(id) ON DELETE CASCADE,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        first_time_provider_access BOOLEAN NOT NULL DEFAULT true,
+        unusual_hour_access BOOLEAN NOT NULL DEFAULT true,
+        bulk_record_access BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS patient_access_alerts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+        audit_log_id UUID REFERENCES data_access_audit_log(id) ON DELETE SET NULL,
+        alert_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_patient_access_alerts_patient_time
+        ON patient_access_alerts(patient_id, created_at DESC);
+
+      ALTER TABLE data_access_audit_log ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE patient_access_alert_preferences ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE patient_access_alerts ENABLE ROW LEVEL SECURITY;
+    `,
+  },
 ];
 
 // ─── Runner ──────────────────────────────────────────────────────────────────
@@ -138,6 +227,8 @@ export async function runMigrations(): Promise<void> {
     const VERIFY_TABLE: Record<string, string> = {
       '006_document_grants_and_referrals': 'referrals',
       '007_report_analysis_cache_and_category': 'report_analysis_cache',
+      '008_patient_grant_otp': 'patient_grant_otp_challenges',
+      '009_privacy_access_audit': 'data_access_audit_log',
     };
 
     for (const migration of MIGRATIONS) {
