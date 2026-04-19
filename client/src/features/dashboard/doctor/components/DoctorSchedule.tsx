@@ -31,10 +31,13 @@ export const DoctorSchedule = () => {
   const [leaveDate, setLeaveDate] = useState('');
   const [markingLeave, setMarkingLeave] = useState(false);
 
-  const fetchSlots = async () => {
+   const fetchSlots = async (date: Date) => {
     setLoading(true);
     try {
-      const res = await doctorService.listSlots(false);
+         const res = await doctorService.listSlots({
+            upcoming: false,
+            date: format(date, 'yyyy-MM-dd'),
+         });
       setSlots((res as any).data?.slots ?? []);
     } catch (e: any) {
       toast.error(e.message ?? 'Failed to load slots');
@@ -44,8 +47,8 @@ export const DoctorSchedule = () => {
   };
 
   useEffect(() => {
-    fetchSlots();
-  }, []);
+      fetchSlots(viewDate);
+   }, [viewDate]);
 
   const slotsForDay = slots
     .filter((s) => {
@@ -59,7 +62,7 @@ export const DoctorSchedule = () => {
     try {
       await doctorService.blockSlot(slotId);
       toast.success('Slot blocked');
-      fetchSlots();
+         fetchSlots(viewDate);
     } catch (e: any) {
       toast.error(e.message ?? 'Failed to block slot');
     } finally {
@@ -72,7 +75,7 @@ export const DoctorSchedule = () => {
     try {
       await doctorService.unblockSlot(slotId);
       toast.success('Slot unblocked');
-      fetchSlots();
+         fetchSlots(viewDate);
     } catch (e: any) {
       toast.error(e.message ?? 'Failed to unblock slot');
     } finally {
@@ -91,7 +94,7 @@ export const DoctorSchedule = () => {
       const { blocked } = (res as any).data ?? {};
       toast.success(`${blocked} slot(s) blocked for leave day`);
       setLeaveDate('');
-      fetchSlots();
+         fetchSlots(viewDate);
     } catch (e: any) {
       toast.error(e.message ?? 'Failed to mark leave');
     } finally {

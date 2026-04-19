@@ -245,8 +245,37 @@ export const patientService = {
     documents: DocumentSelection[];
     valid_days?: number;
     source?: 'manual' | 'booking' | 'referral';
+    verification_token?: string;
   }) =>
     api.post<{ data: { grants: AccessGrant[] } }>('/api/patients/me/grants', payload),
+
+  initiateBookingGrantOtp: (payload: {
+    granted_to_doctor_id: string;
+    documents: DocumentSelection[];
+    valid_days?: number;
+    source?: 'booking';
+  }) =>
+    api.post<{
+      data: {
+        challenge_id: string;
+        expires_at: string;
+        retry_after_seconds: number;
+      };
+    }>('/api/patients/me/grants/booking/otp/initiate', payload),
+
+  verifyBookingGrantOtp: (payload: {
+    granted_to_doctor_id: string;
+    documents: DocumentSelection[];
+    valid_days?: number;
+    source?: 'booking';
+    otp_code: string;
+  }) =>
+    api.post<{
+      data: {
+        verification_token: string;
+        expires_at: string;
+      };
+    }>('/api/patients/me/grants/booking/otp/verify', payload),
 
   revokeGrant: (grantId: string) =>
     api.delete<{ data: null }>(`/api/patients/me/grants/${grantId}`),

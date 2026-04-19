@@ -93,6 +93,11 @@ const PatientDiscover = () => {
   const [selectedDocuments, setSelectedDocuments] = useState<DocumentSelection[]>([]);
   const [grantsLoading, setGrantsLoading] = useState(false);
   const [grantsSaving, setGrantsSaving] = useState(false);
+  const [grantOtpSent, setGrantOtpSent] = useState(false);
+  const [grantOtpCode, setGrantOtpCode] = useState('');
+  const [grantOtpExpiresAt, setGrantOtpExpiresAt] = useState<string | null>(null);
+  const [grantOtpSending, setGrantOtpSending] = useState(false);
+  const [grantOtpVerifying, setGrantOtpVerifying] = useState(false);
 
   // ── Release slot lock on component unmount (user navigates away) ──
   useEffect(() => {
@@ -371,6 +376,9 @@ const PatientDiscover = () => {
   const loadDocumentsForGrant = async () => {
     setGrantsLoading(true);
     setSelectedDocuments([]);
+    setGrantOtpSent(false);
+    setGrantOtpCode('');
+    setGrantOtpExpiresAt(null);
     try {
       const res = await patientService.getPassport();
       const data = (res as any).data;
@@ -385,6 +393,9 @@ const PatientDiscover = () => {
 
   // ── Toggle document selection ──
   const toggleDocument = (docType: 'prescription' | 'report', docId: string) => {
+    setGrantOtpSent(false);
+    setGrantOtpCode('');
+    setGrantOtpExpiresAt(null);
     setSelectedDocuments((prev) => {
       const exists = prev.some((d) => d.document_type === docType && d.document_id === docId);
       if (exists) return prev.filter((d) => !(d.document_type === docType && d.document_id === docId));
@@ -397,6 +408,9 @@ const PatientDiscover = () => {
 
   // ── Select / deselect all ──
   const selectAllDocuments = () => {
+    setGrantOtpSent(false);
+    setGrantOtpCode('');
+    setGrantOtpExpiresAt(null);
     const all: DocumentSelection[] = [
       ...patientPrescriptions.map((p) => ({ document_type: 'prescription' as const, document_id: p.id })),
       ...patientReports.map((r) => ({ document_type: 'report' as const, document_id: r.id })),
@@ -404,25 +418,76 @@ const PatientDiscover = () => {
     setSelectedDocuments(all);
   };
 
-  const deselectAllDocuments = () => setSelectedDocuments([]);
+  const deselectAllDocuments = () => {
+    setGrantOtpSent(false);
+    setGrantOtpCode('');
+    setGrantOtpExpiresAt(null);
+    setSelectedDocuments([]);
+  };
 
-  // ── Submit grants ──
+  // ── Request OTP for booking grant ──
   const submitGrants = async () => {
     if (!selectedDoctor || selectedDocuments.length === 0) return;
-    setGrantsSaving(true);
+    setGrantOtpSending(true);
     try {
-      await patientService.createGrant({
+      const res = await patientService.initiateBookingGrantOtp({
         granted_to_doctor_id: selectedDoctor.id,
         documents: selectedDocuments,
         valid_days: 90,
         source: 'booking',
       });
-      toast.success(`Shared ${selectedDocuments.length} document${selectedDocuments.length > 1 ? 's' : ''} with ${selectedDoctor.full_name}`);
+      setGrantOtpSent(true);
+      setGrantOtpExpiresAt((res as any).data?.expires_at ?? null);
+      toast.success('OTP sent to your WhatsApp number');
     } catch (err: any) {
-      toast.error(err?.message ?? 'Failed to share documents');
+      toast.error(err?.message ?? 'Failed to send OTP');
     } finally {
-      setGrantsSaving(false);
+      setGrantOtpSending(false);
+    }
+  };
+
+  // ── Verify OTP and create grants ──
+  const verifyOtpAndSubmitGrants = async () => {
+    if (!selectedDoctor || selectedDocuments.length === 0) return;
+    if (!/^\d{6}$/.test(grantOtpCode.trim())) {
+      toast.error('Enter a valid 6-digit OTP');
+      return;
+    }
+
+    setGrantOtpVerifying(true);
+    setGrantsSaving(true);
+    try {
+      const verifyRes = await patientService.verifyBookingGrantOtp({
+        granted_to_doctor_id: selectedDoctor.id,
+        documents: selectedDocuments,
+        valid_days: 90,
+        source: 'booking',
+        otp_code: grantOtpCode.trim(),
+      });
+
+      const verificationToken = (verifyRes as any).data?.verification_token;
+      if (!verificationToken) {
+        throw new Error('OTP verification failed. Please request a new OTP.');
+      }
+
+      await patientService.createGrant({
+        granted_to_doctor_id: selectedDoctor.id,
+        documents: selectedDocuments,
+        valid_days: 90,
+        source: 'booking',
+        verification_token: verificationToken,
+      });
+
+      toast.success(`Shared ${selectedDocuments.length} document${selectedDocuments.length > 1 ? 's' : ''} with ${selectedDoctor.full_name}`);
+      setGrantOtpCode('');
+      setGrantOtpSent(false);
+      setGrantOtpExpiresAt(null);
       setStep('done');
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to verify OTP and share documents');
+    } finally {
+      setGrantOtpVerifying(false);
+      setGrantsSaving(false);
     }
   };
 
@@ -1005,6 +1070,28 @@ const PatientDiscover = () => {
               </>
             )}
 
+            {grantOtpSent && selectedDocuments.length > 0 && (
+              <div className="bg-card rounded-xl border p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Verify OTP to complete consent</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Enter the 6-digit OTP sent on WhatsApp.
+                    {grantOtpExpiresAt ? ` Expires at ${format(parseISO(grantOtpExpiresAt), 'h:mm:ss a')}.` : ''}
+                  </p>
+                </div>
+                <div className="max-w-xs">
+                  <Label htmlFor="grant-otp" className="text-xs">OTP Code</Label>
+                  <Input
+                    id="grant-otp"
+                    placeholder="Enter 6-digit OTP"
+                    value={grantOtpCode}
+                    maxLength={6}
+                    onChange={(e) => setGrantOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="flex gap-3 pt-2">
               <Button
@@ -1016,19 +1103,45 @@ const PatientDiscover = () => {
               </Button>
               <Button
                 className="flex-1 h-12"
-                onClick={submitGrants}
-                disabled={selectedDocuments.length === 0 || grantsSaving}
+                onClick={grantOtpSent ? verifyOtpAndSubmitGrants : submitGrants}
+                disabled={
+                  selectedDocuments.length === 0 ||
+                  grantsSaving ||
+                  grantOtpSending ||
+                  grantOtpVerifying ||
+                  (grantOtpSent && grantOtpCode.trim().length !== 6)
+                }
               >
-                {grantsSaving ? (
+                {grantOtpSending ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Sharing…
+                    Sending OTP…
                   </>
+                ) : grantOtpVerifying || grantsSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Verifying…
+                  </>
+                ) : grantOtpSent ? (
+                  'Verify OTP & Share'
                 ) : (
-                  `Share ${selectedDocuments.length > 0 ? selectedDocuments.length + ' ' : ''}Document${selectedDocuments.length !== 1 ? 's' : ''}`
+                  `Send OTP to Share ${selectedDocuments.length > 0 ? selectedDocuments.length + ' ' : ''}Document${selectedDocuments.length !== 1 ? 's' : ''}`
                 )}
               </Button>
             </div>
+
+            {grantOtpSent && (
+              <div className="pt-1">
+                <Button
+                  variant="ghost"
+                  className="h-9 px-2 text-xs"
+                  onClick={submitGrants}
+                  disabled={grantOtpSending || grantOtpVerifying || grantsSaving}
+                >
+                  Resend OTP
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
