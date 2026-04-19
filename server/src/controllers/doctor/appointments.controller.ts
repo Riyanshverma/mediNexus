@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError, NotFoundError, BadRequestError } from '../../utils/errors.js';
 import { requireDoctor } from '../../utils/lookup.js';
+import { logPatientDataAccess } from '../../utils/privacyAudit.js';
 import type { AppointmentStatus } from '../../models/database.types.js';
 import type { UpdateAppointmentStatusBody } from '../../validators/doctor/appointment-status.validator.js';
 import { notifyNextWaiting } from '../../jobs/waitlistQueue.js';
@@ -83,6 +84,26 @@ export async function listDoctorAppointments(
           )
         : appointments;
 
+    const uniquePatientIds = [...new Set(filtered.map((appt) => appt.patient_id).filter(Boolean))];
+    await Promise.all(
+      uniquePatientIds.map((patientId) =>
+        logPatientDataAccess({
+          patientId,
+          actorUserId: userId,
+          actorRole: 'doctor',
+          actorLabel: doctor.full_name,
+          action: 'read',
+          resourceType: 'appointments',
+          purpose: 'doctor_schedule_review',
+          metadata: {
+            filter,
+            record_count: filtered.filter((appt) => appt.patient_id === patientId).length,
+          },
+          ipAddress: req.ip,
+        })
+      )
+    );
+
     sendSuccess(res, { appointments: filtered }, 'Appointments retrieved');
   } catch (err) {
     next(err);
@@ -120,6 +141,21 @@ export async function getDoctorAppointment(
     if (error || !data) {
       throw new NotFoundError('Appointment not found');
     }
+
+    await logPatientDataAccess({
+      patientId: data.patient_id,
+      actorUserId: userId,
+      actorRole: 'doctor',
+      actorLabel: doctor.full_name,
+      action: 'read',
+      resourceType: 'appointment',
+      resourceId: data.id,
+      purpose: 'doctor_appointment_detail',
+      metadata: {
+        booking_type: data.booking_type,
+      },
+      ipAddress: req.ip,
+    });
 
     sendSuccess(res, { appointment: data }, 'Appointment retrieved');
   } catch (err) {

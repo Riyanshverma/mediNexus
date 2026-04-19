@@ -655,7 +655,6 @@ export const PatientHealthPassport = () => {
                   <button className="text-sm font-bold text-primary border-b-2 border-primary pb-3 px-1">Access Granted</button>
                   <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">Revoked Access</button>
                   <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">Activity Logs</button>
-                  <button className="text-sm font-medium text-muted-foreground hover:text-foreground pb-3 px-1">API Keys</button>
                 </div>
 
                 {groupedGrants.length === 0 ? (
