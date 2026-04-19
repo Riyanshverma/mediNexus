@@ -17,6 +17,7 @@ const navigationItems = [
   { name: 'Appointments', key: 'appointments' },
   { name: 'Waitlist', key: 'waitlist' },
   { name: 'Health Passport', key: 'passport' },
+  { name: 'Privacy', key: 'privacy' },
 ];
 
 export const PatientDashboardHeader = ({ activeTab, setActiveTab }: HeaderProps) => {

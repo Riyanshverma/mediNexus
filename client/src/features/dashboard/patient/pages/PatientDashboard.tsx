@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { PatientDashboardHeader, PatientHealthPassport, PatientHome, PatientAppointments, WaitlistPanel, PatientProfilePage } from '../..';
+import {
+  PatientDashboardHeader,
+  PatientHealthPassport,
+  PatientHome,
+  PatientAppointments,
+  WaitlistPanel,
+  PatientProfilePage,
+  PatientPrivacyCenter,
+} from '../..';
 import { PatientAIChat } from '../components/PatientAIChat';
 import { useWaitlistStream, type WaitlistUpdatePayload } from '@/hooks/useWaitlistStream';
 
@@ -51,6 +59,8 @@ export const PatientDashboard = () => {
         return <PatientHealthPassport />;
       case 'profile':
         return <PatientProfilePage />;
+      case 'privacy':
+        return <PatientPrivacyCenter />;
       default:
         return <PatientHome setActiveTab={setActiveTab} />;
     }
