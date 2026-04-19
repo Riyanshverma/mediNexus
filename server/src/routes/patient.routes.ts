@@ -32,6 +32,8 @@ import {
   createAccessGrant,
   revokeAccessGrant,
   revokeAllGrantsForDoctor,
+  initiateBookingGrantOtp,
+  verifyBookingGrantOtp,
 } from '../controllers/patient/grants.controller.js';
 import { streamPatientWaitlist } from '../controllers/sse/waitlist.controller.js';
 import { patientAIChat } from '../controllers/patient/aiChat.controller.js';
@@ -80,6 +82,8 @@ patientRouter.get('/me/passport', getPatientPassport);
 
 // ── Record Access Grants ──────────────────────────────────────────────
 patientRouter.get('/me/grants', listAccessGrants);
+patientRouter.post('/me/grants/booking/otp/initiate', initiateBookingGrantOtp);
+patientRouter.post('/me/grants/booking/otp/verify', verifyBookingGrantOtp);
 patientRouter.post('/me/grants', createAccessGrant);
 patientRouter.delete('/me/grants/doctor/:doctorId', revokeAllGrantsForDoctor);
 patientRouter.delete('/me/grants/:grantId', revokeAccessGrant);

@@ -1,7 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
+import { createHash, randomInt, randomUUID } from 'crypto';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { sendSuccess } from '../../utils/response.js';
-import { AppError, NotFoundError, BadRequestError } from '../../utils/errors.js';
+import { sendWhatsAppText } from '../whatsapp/whatsapp.controller.js';
+import { AppError, NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors.js';
 import { requirePatient } from '../../utils/lookup.js';
 
 // ─── Schema note ─────────────────────────────────────────────────────────────
@@ -31,6 +33,290 @@ interface CreateGrantBody {
   documents: DocumentInput[];
   valid_days?: number;
   source?: 'manual' | 'booking' | 'referral';
+  verification_token?: string;
+}
+
+interface BookingGrantOtpInitBody {
+  granted_to_doctor_id: string;
+  documents: DocumentInput[];
+  valid_days?: number;
+  source?: 'booking';
+}
+
+interface BookingGrantOtpVerifyBody {
+  granted_to_doctor_id: string;
+  documents: DocumentInput[];
+  valid_days?: number;
+  source?: 'booking';
+  otp_code: string;
+}
+
+const OTP_TTL_MINUTES = 5;
+const OTP_RESEND_COOLDOWN_SECONDS = 30;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_MAX_REQUESTS_PER_HOUR = 5;
+
+function normaliseDocuments(documents: DocumentInput[]): DocumentInput[] {
+  return [...documents].sort((a, b) => {
+    const left = `${a.document_type}:${a.document_id}`;
+    const right = `${b.document_type}:${b.document_id}`;
+    return left.localeCompare(right);
+  });
+}
+
+function buildBookingGrantIntentHash(
+  granted_to_doctor_id: string,
+  documents: DocumentInput[],
+  valid_days: number,
+  source: 'manual' | 'booking' | 'referral'
+): string {
+  const canonical = JSON.stringify({
+    granted_to_doctor_id,
+    documents: normaliseDocuments(documents),
+    valid_days,
+    source,
+  });
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+function hashOtp(patientId: string, intentHash: string, otpCode: string): string {
+  return createHash('sha256')
+    .update(`${patientId}:${intentHash}:${otpCode}`)
+    .digest('hex');
+}
+
+function generateSixDigitOtp(): string {
+  const code = randomInt(0, 1_000_000);
+  return code.toString().padStart(6, '0');
+}
+
+/**
+ * POST /api/patients/me/grants/booking/otp/initiate
+ * Sends an OTP to patient's WhatsApp number before booking-source grant creation.
+ */
+export async function initiateBookingGrantOtp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const patient = await requirePatient(userId);
+    const {
+      granted_to_doctor_id,
+      documents,
+      valid_days = 90,
+      source = 'booking',
+    } = req.body as BookingGrantOtpInitBody;
+
+    if (source !== 'booking') {
+      throw new BadRequestError('OTP initiation is only supported for booking-source grants');
+    }
+    if (!granted_to_doctor_id) throw new BadRequestError('granted_to_doctor_id is required');
+    if (!documents || documents.length === 0) throw new BadRequestError('At least one document must be specified');
+    if (valid_days < 1 || valid_days > 365) throw new BadRequestError('valid_days must be between 1 and 365');
+    if (!patient.phone_number) {
+      throw new AppError('No verified patient phone number is available for OTP delivery', 400);
+    }
+
+    const intentHash = buildBookingGrantIntentHash(
+      granted_to_doctor_id,
+      documents,
+      valid_days,
+      source
+    );
+
+    const nowMs = Date.now();
+    const adminAny = supabaseAdmin as any;
+
+    const { data: latestChallenge } = await adminAny
+      .from('patient_grant_otp_challenges')
+      .select('id, last_sent_at')
+      .eq('patient_id', patient.id)
+      .eq('intent_hash', intentHash)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestChallenge?.last_sent_at) {
+      const elapsedSeconds = Math.floor((nowMs - new Date(latestChallenge.last_sent_at).getTime()) / 1000);
+      if (elapsedSeconds < OTP_RESEND_COOLDOWN_SECONDS) {
+        throw new AppError(
+          `Please wait ${OTP_RESEND_COOLDOWN_SECONDS - elapsedSeconds} seconds before requesting another OTP`,
+          429
+        );
+      }
+    }
+
+    const oneHourAgo = new Date(nowMs - 60 * 60 * 1000).toISOString();
+    const { count: requestCount } = await adminAny
+      .from('patient_grant_otp_challenges')
+      .select('id', { count: 'exact', head: true })
+      .eq('patient_id', patient.id)
+      .gte('created_at', oneHourAgo);
+
+    if ((requestCount ?? 0) >= OTP_MAX_REQUESTS_PER_HOUR) {
+      throw new AppError('Too many OTP requests. Please try again in about an hour.', 429);
+    }
+
+    const otpCode = generateSixDigitOtp();
+    const expiresAt = new Date(nowMs + OTP_TTL_MINUTES * 60 * 1000).toISOString();
+
+    const { data: createdChallenge, error: insertError } = await adminAny
+      .from('patient_grant_otp_challenges')
+      .insert({
+        patient_id: patient.id,
+        phone_number: patient.phone_number,
+        intent_hash: intentHash,
+        otp_hash: hashOtp(patient.id, intentHash, otpCode),
+        status: 'sent',
+        attempt_count: 0,
+        channel: 'whatsapp',
+        expires_at: expiresAt,
+        created_at: new Date(nowMs).toISOString(),
+        last_sent_at: new Date(nowMs).toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (insertError || !createdChallenge) {
+      throw new AppError('Failed to create OTP challenge', 500);
+    }
+
+    try {
+      await sendWhatsAppText(
+        patient.phone_number,
+        `Your mediNexus consent OTP is ${otpCode}. It expires in ${OTP_TTL_MINUTES} minutes. Do not share this code with anyone.`
+      );
+    } catch {
+      await adminAny
+        .from('patient_grant_otp_challenges')
+        .delete()
+        .eq('id', createdChallenge.id);
+      throw new AppError('Failed to send OTP on WhatsApp. Please try again.', 503);
+    }
+
+    sendSuccess(
+      res,
+      {
+        challenge_id: createdChallenge.id,
+        expires_at: expiresAt,
+        retry_after_seconds: OTP_RESEND_COOLDOWN_SECONDS,
+      },
+      'OTP sent to your WhatsApp number'
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/patients/me/grants/booking/otp/verify
+ * Verifies OTP and returns a short-lived verification token used in createGrant.
+ */
+export async function verifyBookingGrantOtp(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    if (!userId) throw new AppError('Authenticated user not found', 401);
+
+    const patient = await requirePatient(userId);
+    const {
+      granted_to_doctor_id,
+      documents,
+      valid_days = 90,
+      source = 'booking',
+      otp_code,
+    } = req.body as BookingGrantOtpVerifyBody;
+
+    if (source !== 'booking') {
+      throw new BadRequestError('OTP verification is only supported for booking-source grants');
+    }
+    if (!granted_to_doctor_id) throw new BadRequestError('granted_to_doctor_id is required');
+    if (!documents || documents.length === 0) throw new BadRequestError('At least one document must be specified');
+    if (valid_days < 1 || valid_days > 365) throw new BadRequestError('valid_days must be between 1 and 365');
+    if (!/^\d{6}$/.test(otp_code ?? '')) throw new BadRequestError('OTP must be a 6 digit code');
+
+    const intentHash = buildBookingGrantIntentHash(
+      granted_to_doctor_id,
+      documents,
+      valid_days,
+      source
+    );
+    const adminAny = supabaseAdmin as any;
+
+    const { data: challenge } = await adminAny
+      .from('patient_grant_otp_challenges')
+      .select('id, otp_hash, attempt_count, status, expires_at, consumed_at')
+      .eq('patient_id', patient.id)
+      .eq('intent_hash', intentHash)
+      .is('consumed_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!challenge) {
+      throw new BadRequestError('No active OTP challenge found. Please request a new OTP.');
+    }
+
+    const nowIso = new Date().toISOString();
+    if (challenge.status === 'locked') {
+      throw new AppError('Too many invalid OTP attempts. Please request a fresh OTP.', 429);
+    }
+
+    if (new Date(challenge.expires_at) <= new Date()) {
+      await adminAny
+        .from('patient_grant_otp_challenges')
+        .update({ status: 'expired' })
+        .eq('id', challenge.id);
+      throw new BadRequestError('OTP has expired. Please request a new OTP.');
+    }
+
+    const expectedHash = hashOtp(patient.id, intentHash, otp_code);
+    if (expectedHash !== challenge.otp_hash) {
+      const nextAttempts = (challenge.attempt_count ?? 0) + 1;
+      const nextStatus = nextAttempts >= OTP_MAX_ATTEMPTS ? 'locked' : 'sent';
+      await adminAny
+        .from('patient_grant_otp_challenges')
+        .update({ attempt_count: nextAttempts, status: nextStatus })
+        .eq('id', challenge.id);
+
+      if (nextStatus === 'locked') {
+        throw new AppError('Too many invalid OTP attempts. Please request a fresh OTP.', 429);
+      }
+      throw new BadRequestError('Invalid OTP code');
+    }
+
+    const verificationToken = randomUUID();
+    const { error: updateError } = await adminAny
+      .from('patient_grant_otp_challenges')
+      .update({
+        status: 'verified',
+        verified_at: nowIso,
+        verification_token: verificationToken,
+      })
+      .eq('id', challenge.id);
+
+    if (updateError) {
+      throw new AppError('Failed to verify OTP', 500);
+    }
+
+    sendSuccess(
+      res,
+      {
+        verification_token: verificationToken,
+        expires_at: challenge.expires_at,
+      },
+      'OTP verified successfully'
+    );
+  } catch (err) {
+    next(err);
+  }
 }
 
 // ─── Codec helpers ────────────────────────────────────────────────────────────
@@ -147,11 +433,49 @@ export async function createAccessGrant(
       documents,
       valid_days = 30,
       source = 'manual',
+      verification_token,
     } = req.body as CreateGrantBody;
 
     if (!granted_to_doctor_id) throw new BadRequestError('granted_to_doctor_id is required');
     if (!documents || documents.length === 0) throw new BadRequestError('At least one document must be specified');
     if (valid_days < 1 || valid_days > 365) throw new BadRequestError('valid_days must be between 1 and 365');
+
+    let consumedChallengeId: string | null = null;
+    if (source === 'booking') {
+      if (!verification_token) {
+        throw new BadRequestError('verification_token is required for booking-source grants');
+      }
+
+      const intentHash = buildBookingGrantIntentHash(
+        granted_to_doctor_id,
+        documents,
+        valid_days,
+        source
+      );
+
+      const adminAny = supabaseAdmin as any;
+      const { data: verifiedChallenge } = await adminAny
+        .from('patient_grant_otp_challenges')
+        .select('id, expires_at, consumed_at, status')
+        .eq('patient_id', patient.id)
+        .eq('intent_hash', intentHash)
+        .eq('verification_token', verification_token)
+        .eq('status', 'verified')
+        .is('consumed_at', null)
+        .order('verified_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!verifiedChallenge) {
+        throw new ForbiddenError('Grant verification failed. Please verify OTP again.');
+      }
+
+      if (new Date(verifiedChallenge.expires_at) <= new Date()) {
+        throw new BadRequestError('Verification has expired. Please request and verify OTP again.');
+      }
+
+      consumedChallengeId = verifiedChallenge.id;
+    }
 
     // Verify doctor exists
     const { data: doctor, error: doctorError } = await supabaseAdmin
@@ -231,6 +555,17 @@ export async function createAccessGrant(
     if (insertError || !created) {
       console.error('[createAccessGrant] insert failed:', insertError?.message);
       throw new AppError('Failed to create access grants', 500);
+    }
+
+    if (source === 'booking' && consumedChallengeId) {
+      const adminAny = supabaseAdmin as any;
+      await adminAny
+        .from('patient_grant_otp_challenges')
+        .update({
+          consumed_at: new Date().toISOString(),
+          status: 'consumed',
+        })
+        .eq('id', consumedChallengeId);
     }
 
     const enriched = await enrichGrants(created);
